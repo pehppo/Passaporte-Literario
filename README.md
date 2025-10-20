@@ -6,10 +6,10 @@ Com ele, é possível adicionar livros, anotar impressões, definir metas e visu
 
 ## ✨ Principais recursos
 
-· 📝 Adicionar e editar livros
-· 📖 Diário de leitura
-· 🎯 Metas e estatísticas
-· 🔍 Integração com Google Books API
+· Adicionar e editar livros
+· Diário de leitura
+· Metas e estatísticas
+· Integração com Google Books API
 
 ## 🛠 Tecnologias
 
