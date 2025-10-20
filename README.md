@@ -1,16 +1,25 @@
-# pass_liter
+# 📚 Passaporte Literário
 
-A new Flutter project.
+O Passaporte Literário é um aplicativo Flutter criado para ajudar leitores a registrar e acompanhar suas leituras.
 
-## Getting Started
+Com ele, é possível adicionar livros, anotar impressões, definir metas e visualizar estatísticas de leitura.
 
-This project is a starting point for a Flutter application.
+## ✨ Principais recursos
 
-A few resources to get you started if this is your first Flutter project:
+· 📝 Adicionar e editar livros
+· 📖 Diário de leitura
+· 🎯 Metas e estatísticas
+· 🔍 Integração com Google Books API
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## 🛠 Tecnologias
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+· Flutter 
+· Dart
+· Google Fonts
+· Shared Preferences
+· Image Picker
+· HTTP
+
+## 📱 APK
+
+O arquivo APK pode ser baixado na aba Releases do repositório.
