@@ -13,12 +13,11 @@ Com ele, é possível adicionar livros, anotar impressões, definir metas e visu
 
 ## 🛠 Tecnologias
 
-· Flutter 
-· Dart
-· Google Fonts
-· Shared Preferences
-· Image Picker
-· HTTP
+· Flutter  
+· Dart  
+· Shared Preferences  
+· Image Picker  
+· HTTP  
 
 ## 📱 APK
 
