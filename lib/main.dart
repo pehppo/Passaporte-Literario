@@ -1,49 +1,42 @@
+import 'dart:io';
+import 'firebase_options.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
-import 'dart:io'; // Para checar plataforma
-import 'package:window_size/window_size.dart'; // Para controlar tamanho da janela
 
-// Notifier global para tema em tempo real
 ValueNotifier<String> temaNotifier = ValueNotifier('Sistema');
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Start in a mode that shows only the status bar (top) and hides the
-  // system navigation (bottom) so the app appears full-screen without
-  // the soft navigation buttons.
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: [SystemUiOverlay.top]);
 
-  // Optional: make status/navigation bar icons use light content for dark background
-  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarBrightness: Brightness.dark,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: const Color(0xFF141425),
-    systemNavigationBarIconBrightness: Brightness.light,
-  ));
-
-  // Configura janela no desktop
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    setWindowTitle('Passaporte Literário');
-    setWindowMinSize(const Size(360, 780));
-    setWindowMaxSize(const Size(360, 780));
-    setWindowFrame(const Rect.fromLTWH(100, 100, 360, 780)); // x, y, width, height
+  if (Platform.isAndroid) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.android,
+    );
   }
 
-  final prefs = await SharedPreferences.getInstance();
-  final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-  final savedTheme = prefs.getString('selectedTheme') ?? 'Sistema';
-  temaNotifier.value = savedTheme;
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.immersiveSticky,
+  );
 
-  runApp(PassaporteApp(isLoggedIn: isLoggedIn));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarBrightness: Brightness.dark,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFF141425),
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
+
+  runApp(const PassaporteApp());
 }
 
 class PassaporteApp extends StatelessWidget {
-  final bool isLoggedIn;
-  const PassaporteApp({super.key, required this.isLoggedIn});
+  const PassaporteApp({super.key});
 
   ThemeMode _themeMode(String tema) {
     switch (tema) {
@@ -74,7 +67,22 @@ class PassaporteApp extends StatelessWidget {
             scaffoldBackgroundColor: const Color(0xFF141425),
           ),
           themeMode: _themeMode(temaAtual),
-          home: SplashScreen(isLoggedIn: isLoggedIn),
+          home: Platform.isAndroid
+              ? StreamBuilder<User?>(
+                  stream: FirebaseAuth.instance.authStateChanges(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SplashScreen();
+                    }
+
+                    if (snapshot.hasData) {
+                      return const HomeScreen();
+                    }
+
+                    return const LoginScreen();
+                  },
+                )
+              : const LoginScreen(),
         );
       },
     );
@@ -82,8 +90,7 @@ class PassaporteApp extends StatelessWidget {
 }
 
 class SplashScreen extends StatefulWidget {
-  final bool isLoggedIn;
-  const SplashScreen({super.key, required this.isLoggedIn});
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -110,16 +117,6 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _controller.forward();
-
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              widget.isLoggedIn ? const HomeScreen() : const LoginScreen(),
-        ),
-      );
-    });
   }
 
   @override

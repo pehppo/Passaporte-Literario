@@ -2,10 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'home_screen.dart'; // Para CustomTopBar
+import 'home_screen.dart';
 
 class AddScreen extends StatefulWidget {
   final Map<String, dynamic>? bookToEdit;
@@ -58,9 +57,59 @@ class _AddScreenState extends State<AddScreen> {
   final ImagePicker picker = ImagePicker();
   int rating = 0;
 
-  Future<void> _pickImage() async {
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) setState(() => pickedImage = image);
+
+  Future<void> _pickImageFrom(ImageSource source) async {
+    try {
+      final XFile? image = await picker.pickImage(source: source);
+      if (image != null) setState(() => pickedImage = image);
+    } catch (e) {
+      debugPrint('Erro ao selecionar imagem: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível acessar a câmera/galeria')),
+        );
+      }
+    }
+  }
+
+  void _showPickOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF27273A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.white),
+                title: Text('Tirar foto', style: GoogleFonts.poppins(color: Colors.white)),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImageFrom(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.white),
+                title: Text('Selecionar da galeria', style: GoogleFonts.poppins(color: Colors.white)),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImageFrom(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.close, color: Colors.white),
+                title: Text('Cancelar', style: GoogleFonts.poppins(color: Colors.white)),
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _clearSearch() {
@@ -139,9 +188,6 @@ class _AddScreenState extends State<AddScreen> {
       'rating': rating,
     };
 
-    widget.onSaveBook(bookData);
-    Navigator.maybePop(context);
-
     titleController.clear();
     authorController.clear();
     yearController.clear();
@@ -158,6 +204,8 @@ class _AddScreenState extends State<AddScreen> {
     bookSuggestions = [];
 
     setState(() {});
+
+    widget.onSaveBook(bookData);
   }
 
   @override
@@ -170,7 +218,6 @@ class _AddScreenState extends State<AddScreen> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // Busca de livros
               TextField(
                 controller: searchController,
                 style: GoogleFonts.poppins(color: Colors.white),
@@ -198,7 +245,10 @@ class _AddScreenState extends State<AddScreen> {
                   ),
                 ),
                 onChanged: (query) {
-                  setState(() => searchQuery = query);
+                  setState(() {
+                    searchQuery = query;
+                    if (query.isEmpty) bookSuggestions = [];
+                  });
                   if (query.length > 2) fetchBookSuggestions(query);
                 },
               ),
@@ -211,7 +261,42 @@ class _AddScreenState extends State<AddScreen> {
                     itemCount: bookSuggestions.length,
                     itemBuilder: (context, index) {
                       final book = bookSuggestions[index];
+                      Widget leading;
+                      final imageLinks = book['imageLinks'];
+                      final thumb = (imageLinks != null && (imageLinks['thumbnail'] ?? imageLinks['smallThumbnail']) != null)
+                          ? (imageLinks['thumbnail'] ?? imageLinks['smallThumbnail']).toString()
+                          : null;
+
+                      if (thumb != null && thumb.isNotEmpty) {
+                        leading = ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(
+                            thumb,
+                            width: 48,
+                            height: 72,
+                            fit: BoxFit.cover,
+                            errorBuilder: (c, e, s) => Container(
+                              width: 48,
+                              height: 72,
+                              color: Colors.grey.shade800,
+                              child: const Icon(Icons.book, color: Colors.white70),
+                            ),
+                          ),
+                        );
+                      } else {
+                        leading = Container(
+                          width: 48,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade800,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Icon(Icons.book, color: Colors.white70),
+                        );
+                      }
+
                       return ListTile(
+                        leading: leading,
                         title: Text(
                           book['title'] ?? '',
                           style: GoogleFonts.poppins(color: Colors.white),
@@ -230,67 +315,81 @@ class _AddScreenState extends State<AddScreen> {
                           searchQuery = '';
                           fillBookFields(book);
                         },
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       );
                     },
                   ),
                 ),
               const SizedBox(height: 15),
 
-              // Imagem e campos...
               GestureDetector(
-                onTap: _pickImage,
-                child: Container(
-                  width: double.infinity,
-                  height: 180,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF27273A),
-                    borderRadius: BorderRadius.circular(12),
-                    image: pickedImage != null
-                        ? DecorationImage(
-                            image: FileImage(File(pickedImage!.path)),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: pickedImage == null
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 40,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              'Adicionar foto do livro',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              'Toque para tirar foto ou selecionar da galeria',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white70,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
-                        )
-                      : null,
+                onTap: _showPickOptions,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final screenHeight = MediaQuery.of(context).size.height;
+                    final desiredHeight = (screenHeight * 0.25).clamp(120.0, 360.0);
+
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: double.infinity,
+                        maxHeight: desiredHeight,
+                        minHeight: 120,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: double.infinity,
+                          height: desiredHeight,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF27273A),
+                          ),
+                          child: pickedImage != null
+                              ? Image.file(
+                                  File(pickedImage!.path),
+                                  fit: BoxFit.contain,
+                                  width: double.infinity,
+                                  height: desiredHeight,
+                                )
+                              : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.camera_alt,
+                                      color: Colors.white,
+                                      size: 40,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'Adicionar foto do livro',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      'Toque para tirar foto ou selecionar da galeria',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white70,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 15),
 
-              // Campos do livro
               _buildTextField('Nome do Livro', Icons.book, titleController),
               const SizedBox(height: 15),
               _buildTextField('Nome do Autor', Icons.person, authorController),
               const SizedBox(height: 15),
               DropdownButtonFormField<String>(
-                value: selectedGenre,
+                initialValue: selectedGenre,
                 dropdownColor: const Color(0xFF141425),
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.category, color: Colors.white),
@@ -323,7 +422,6 @@ class _AddScreenState extends State<AddScreen> {
                     .toList(),
                 onChanged: (val) => setState(() => selectedGenre = val),
               ),
-              const SizedBox(height: 15),
               Row(
                 children: [
                   Expanded(
@@ -456,8 +554,9 @@ class _AddScreenState extends State<AddScreen> {
             firstDate: DateTime(1900),
             lastDate: DateTime(2100),
           );
-          if (picked != null)
+          if (picked != null) {
             controller.text = '${picked.day}/${picked.month}/${picked.year}';
+          }
         },
       ),
     );

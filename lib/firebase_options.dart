@@ -5,16 +5,6 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
-/// 
-/// To configure Firebase credentials:
-/// 1. Copy this file to lib/firebase_options.dart
-/// 2. Replace the String.fromEnvironment() values with your actual Firebase credentials
-/// 3. Or run the app with --dart-define flags:
-///    flutter run --dart-define=FIREBASE_API_KEY=YOUR_KEY \
-///                --dart-define=FIREBASE_APP_ID=YOUR_APP_ID \
-///                --dart-define=FIREBASE_MESSAGING_SENDER_ID=YOUR_SENDER_ID \
-///                --dart-define=FIREBASE_PROJECT_ID=YOUR_PROJECT_ID \
-///                --dart-define=FIREBASE_STORAGE_BUCKET=YOUR_BUCKET
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
