@@ -65,6 +65,7 @@ android/key.properties
 
 # Firebase and environment secrets
 lib/firebase.env
+firebase.json
 .env
 .env.local
 .env.*.local
