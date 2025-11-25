@@ -1,7 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'cadastro_screen.dart';
 import 'home_screen.dart';
 
@@ -12,7 +13,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController senhaController = TextEditingController();
 
@@ -41,10 +43,58 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Future<bool> verificarLogin(String email, String senha) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('logged_email', email);
-    String? savedSenha = prefs.getString(email);
-    return savedSenha != null && savedSenha == senha;
+    try {
+      await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: senha);
+      return true;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Erro FirebaseAuth: ${e.code}');
+      return false;
+    } catch (e) {
+      debugPrint('Erro genérico login: $e');
+      return false;
+    }
+  }
+
+  Future<void> _loginWithGoogle() async {
+    try {
+      final GoogleSignInAccount? gUser = await GoogleSignIn().signIn();
+      if (gUser == null) return;
+
+      final GoogleSignInAuthentication gAuth = await gUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: gAuth.accessToken,
+        idToken: gAuth.idToken,
+      );
+
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Erro GoogleSignIn/FirebaseAuth: ${e.code}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Não foi possível entrar com o Google.',
+              style: GoogleFonts.poppins(),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro genérico GoogleSignIn: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Ocorreu um erro ao entrar com o Google.',
+              style: GoogleFonts.poppins(),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _triggerError() async {
@@ -64,7 +114,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     return PageRouteBuilder(
       pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final beginOffset = fromRight ? const Offset(1, 0) : const Offset(-1, 0);
+        final beginOffset =
+            fromRight ? const Offset(1, 0) : const Offset(-1, 0);
         final endOffset = Offset.zero;
         final tween = Tween(begin: beginOffset, end: endOffset)
             .chain(CurveTween(curve: Curves.easeInOut));
@@ -122,7 +173,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 ),
                 SizedBox(height: screenHeight * 0.05),
 
-                // E-mail
                 Text(
                   'Insira seu e-mail',
                   style: GoogleFonts.poppins(
@@ -133,7 +183,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 ),
                 SizedBox(height: espacamentoEntreCampos),
 
-                // Campo de e-mail com shake
                 AnimatedBuilder(
                   animation: _shakeController,
                   builder: (context, child) {
@@ -148,21 +197,27 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     decoration: BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
-                          color: _erroLogin ? Colors.red.shade400 : const Color(0xFF232533),
+                          color: _erroLogin
+                              ? Colors.red.shade400
+                              : const Color(0xFF232533),
                           width: 1,
                         ),
                       ),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.email, color: const Color(0xFFA2A2A7), size: screenWidth * 0.06),
+                        Icon(Icons.email,
+                            color: const Color(0xFFA2A2A7),
+                            size: screenWidth * 0.06),
                         SizedBox(width: screenWidth * 0.02),
                         Expanded(
                           child: TextField(
                             controller: emailController,
-                            style: TextStyle(color: Colors.white, fontSize: fonteTexto),
+                            style: TextStyle(
+                                color: Colors.white, fontSize: fonteTexto),
                             keyboardType: TextInputType.emailAddress,
-                            decoration: const InputDecoration(border: InputBorder.none),
+                            decoration:
+                                const InputDecoration(border: InputBorder.none),
                           ),
                         ),
                       ],
@@ -172,7 +227,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
                 SizedBox(height: espacamentoEntreCampos),
 
-                // Senha
                 Text(
                   'Senha',
                   style: GoogleFonts.poppins(
@@ -181,9 +235,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     color: const Color(0xFFA2A2A7),
                   ),
                 ),
-                SizedBox(height: 0),
+                const SizedBox(height: 0),
 
-                // Campo de senha com shake
                 AnimatedBuilder(
                   animation: _shakeController,
                   builder: (context, child) {
@@ -198,7 +251,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     decoration: BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
-                          color: _erroLogin ? Colors.red.shade400 : const Color(0xFF232533),
+                          color: _erroLogin
+                              ? Colors.red.shade400
+                              : const Color(0xFF232533),
                           width: 1,
                         ),
                       ),
@@ -213,7 +268,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
                 SizedBox(height: screenHeight * 0.05),
 
-                // Botão Entrar
                 SizedBox(
                   width: double.infinity,
                   height: campoHeight * 1.0,
@@ -221,34 +275,43 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     onPressed: () async {
                       String email = emailController.text.trim();
                       String senha = senhaController.text.trim();
-                      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                      final emailRegex =
+                          RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
 
                       setState(() => _erroLogin = false);
 
-                      if (email.isEmpty || !emailRegex.hasMatch(email) || senha.isEmpty) {
+                      if (email.isEmpty ||
+                          !emailRegex.hasMatch(email) ||
+                          senha.isEmpty) {
                         await _triggerError();
                         return;
                       }
 
                       bool sucesso = await verificarLogin(email, senha);
+                      debugPrint('verificarLogin result: $sucesso');
                       if (!sucesso) {
                         await _triggerError();
                         return;
                       }
 
-                      // SALVA LOGIN
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool('isLoggedIn', true);
+                      if (!mounted) return;
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Login realizado com sucesso!', style: GoogleFonts.poppins()),
+                        ),
+                      );
 
                       Navigator.pushReplacement(
                         context,
-                        MaterialPageRoute(builder: (context) => const HomeScreen()),
+                        slidePageRoute(page: const HomeScreen(), fromRight: true),
                       );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                        borderRadius:
+                            BorderRadius.circular(screenWidth * 0.02),
                       ),
                     ),
                     child: Text(
@@ -257,6 +320,35 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         fontSize: fonteBotao,
                         fontWeight: FontWeight.w600,
                         color: const Color(0xFF141425),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: campoHeight * 1.0,
+                  child: OutlinedButton.icon(
+                    onPressed: _loginWithGoogle,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.white),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(screenWidth * 0.02),
+                      ),
+                    ),
+                    icon: Image.asset(
+                      'assets/images/google.png',
+                      height: campoHeight * 0.45,
+                    ),
+                    label: Text(
+                      'Entrar com Google',
+                      style: GoogleFonts.poppins(
+                        fontSize: fonteBotao * 0.8,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -276,7 +368,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
                 SizedBox(height: screenHeight * 0.03),
 
-                // Link de cadastro
                 Center(
                   child: RichText(
                     text: TextSpan(
@@ -298,7 +389,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ..onTap = () {
                               Navigator.push(
                                 context,
-                                slidePageRoute(page: const CadastroScreen(), fromRight: true),
+                                slidePageRoute(
+                                    page: const CadastroScreen(),
+                                    fromRight: true),
                               );
                             },
                         ),
@@ -320,7 +413,11 @@ class PasswordField extends StatefulWidget {
   final TextEditingController controller;
   final double iconSize;
   final double fontSize;
-  const PasswordField({super.key, required this.controller, required this.iconSize, required this.fontSize});
+  const PasswordField(
+      {super.key,
+      required this.controller,
+      required this.iconSize,
+      required this.fontSize});
 
   @override
   State<PasswordField> createState() => _PasswordFieldState();
@@ -333,13 +430,15 @@ class _PasswordFieldState extends State<PasswordField> {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(Icons.lock, color: const Color(0xFFA2A2A7), size: widget.iconSize),
+        Icon(Icons.lock,
+            color: const Color(0xFFA2A2A7), size: widget.iconSize),
         SizedBox(width: widget.iconSize * 0.3),
         Expanded(
           child: TextField(
             controller: widget.controller,
             obscureText: _obscureText,
-            style: TextStyle(color: Colors.white, fontSize: widget.fontSize),
+            style:
+                TextStyle(color: Colors.white, fontSize: widget.fontSize),
             decoration: const InputDecoration(
               border: InputBorder.none,
             ),

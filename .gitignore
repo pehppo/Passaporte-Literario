@@ -21,7 +21,7 @@ migrate_working_dir/
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
 # is commented out by default.
-#.vscode/
+.vscode/
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -32,6 +32,7 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/.metadata
 
 # Symbolication related
 app.*.symbols
@@ -43,3 +44,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+<<<<<<< HEAD
+=======
+
+# Firebase and environment secrets
+lib/firebase.env
+.env
+.env.local
+.env.*.local
+>>>>>>> 10bfd15 (refactor: migrar armazenamento para Firebase + Cloudinary e corrigir bugs)

@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'home_screen.dart'; // Para CustomTopBar
+import 'home_screen.dart';
 
 class EditBookScreen extends StatefulWidget {
   final Map<String, dynamic> book;
@@ -83,9 +83,58 @@ class _EditBookScreenState extends State<EditBookScreen> {
     }
   }
 
-  Future<void> _pickImage() async {
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) setState(() => pickedImage = image);
+  Future<void> _pickImageFrom(ImageSource source) async {
+    try {
+      final XFile? image = await picker.pickImage(source: source);
+      if (image != null) setState(() => pickedImage = image);
+    } catch (e) {
+      debugPrint('Erro ao selecionar imagem: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível acessar a câmera/galeria')),
+        );
+      }
+    }
+  }
+
+  void _showPickOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF27273A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.white),
+                title: Text('Tirar foto', style: GoogleFonts.poppins(color: Colors.white)),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImageFrom(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.white),
+                title: Text('Selecionar da galeria', style: GoogleFonts.poppins(color: Colors.white)),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImageFrom(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.close, color: Colors.white),
+                title: Text('Cancelar', style: GoogleFonts.poppins(color: Colors.white)),
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _saveBook() {
@@ -105,7 +154,7 @@ class _EditBookScreenState extends State<EditBookScreen> {
     };
 
     widget.onSaveBook(updatedBook);
-    Navigator.maybePop(context); // volta para o Diário
+    Navigator.maybePop(context);
   }
 
   @override
@@ -118,61 +167,74 @@ class _EditBookScreenState extends State<EditBookScreen> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // Imagem
               GestureDetector(
-                onTap: _pickImage,
-                child: Container(
-                  width: double.infinity,
-                  height: 180,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF27273A),
-                    borderRadius: BorderRadius.circular(12),
-                    image: pickedImage != null
-                        ? DecorationImage(
-                            image: FileImage(File(pickedImage!.path)),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: pickedImage == null
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 40,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              'Adicionar foto do livro',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              'Toque para tirar foto ou selecionar da galeria',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white70,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
-                        )
-                      : null,
+                onTap: _showPickOptions,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final screenHeight = MediaQuery.of(context).size.height;
+                    final desiredHeight = (screenHeight * 0.25).clamp(120.0, 360.0);
+
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: double.infinity,
+                        maxHeight: desiredHeight,
+                        minHeight: 120,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: double.infinity,
+                          height: desiredHeight,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF27273A),
+                          ),
+                          child: pickedImage != null
+                              ? Image.file(
+                                  File(pickedImage!.path),
+                                  fit: BoxFit.contain,
+                                  width: double.infinity,
+                                  height: desiredHeight,
+                                )
+                              : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.camera_alt,
+                                      color: Colors.white,
+                                      size: 40,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'Adicionar foto do livro',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      'Toque para tirar foto ou selecionar da galeria',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white70,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 15),
 
-              // Campos do livro
               _buildTextField('Nome do Livro', Icons.book, titleController),
               const SizedBox(height: 15),
               _buildTextField('Nome do Autor', Icons.person, authorController),
               const SizedBox(height: 15),
               DropdownButtonFormField<String>(
-                value: selectedGenre,
+                initialValue: selectedGenre,
                 dropdownColor: const Color(0xFF141425),
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.category, color: Colors.white),
@@ -338,8 +400,9 @@ class _EditBookScreenState extends State<EditBookScreen> {
             firstDate: DateTime(1900),
             lastDate: DateTime(2100),
           );
-          if (picked != null)
+          if (picked != null) {
             controller.text = '${picked.day}/${picked.month}/${picked.year}';
+          }
         },
       ),
     );

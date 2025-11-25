@@ -1,12 +1,15 @@
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
-import 'home_screen.dart'; // CustomTopBar
+import 'home_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  final Function(File?)? onProfileImageChanged;
+  final Function(String?)? onProfileImageChanged;
 
   const EditProfileScreen({super.key, this.onProfileImageChanged});
 
@@ -22,8 +25,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String dia = '';
   String mes = '';
   String ano = '';
-  File? profileImage;
+
+  String? photoUrl;
+  File? localPhotoFile;
+
   final ImagePicker picker = ImagePicker();
+
+  static const String _cloudinaryCloudName = 'dtottvkil';
+  static const String _cloudinaryUploadPreset = 'pass-liter';
 
   @override
   void initState() {
@@ -32,44 +41,124 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> loadUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final loggedEmail = prefs.getString('logged_email');
-    if (loggedEmail != null) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      final data = doc.data() ?? {};
+
       setState(() {
-        email = loggedEmail;
-        username = prefs.getString('${loggedEmail}_nome') ?? '';
-        sobreMim = prefs.getString('${loggedEmail}_sobre_mim') ?? '';
-        celular = prefs.getString('${loggedEmail}_celular') ?? '';
-        dia = prefs.getString('${loggedEmail}_dia') ?? '';
-        mes = prefs.getString('${loggedEmail}_mes') ?? '';
-        ano = prefs.getString('${loggedEmail}_ano') ?? '';
-        final imagePath = prefs.getString('${loggedEmail}_profile_image');
-        if (imagePath != null) profileImage = File(imagePath);
+        email = data['email'] ?? user.email ?? '';
+        username = data['name'] ?? user.displayName ?? '';
+        sobreMim = data['about'] ?? '';
+        celular = data['phone'] ?? '';
+        dia = data['birthDay'] ?? '';
+        mes = data['birthMonth'] ?? '';
+        ano = data['birthYear'] ?? '';
+        photoUrl = data['photoUrl'];
       });
+    } catch (e) {
+      debugPrint('Erro ao carregar dados do usuário: $e');
     }
   }
 
   Future<void> pickProfileImage() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      final prefs = await SharedPreferences.getInstance();
-      final loggedEmail = prefs.getString('logged_email');
-      if (loggedEmail != null) {
-        await prefs.setString('${loggedEmail}_profile_image', image.path);
+    if (image == null) return;
+
+    final file = File(image.path);
+    setState(() {
+      localPhotoFile = file;
+    });
+
+    try {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Enviando foto de perfil...',
+            style: GoogleFonts.poppins(),
+          ),
+          duration: const Duration(minutes: 1),
+        ),
+      );
+
+      final uri = Uri.parse('https://api.cloudinary.com/v1_1/$_cloudinaryCloudName/image/upload');
+      final request = http.MultipartRequest('POST', uri)
+        ..fields['upload_preset'] = _cloudinaryUploadPreset
+        ..files.add(await http.MultipartFile.fromPath('file', file.path));
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Cloudinary upload failed: ${response.statusCode} ${response.body}');
       }
-      setState(() => profileImage = File(image.path));
-      widget.onProfileImageChanged?.call(profileImage);
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final url = (data['secure_url'] ?? data['url']) as String?;
+      if (url == null) throw Exception('Cloudinary did not return a URL');
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({'photoUrl': url}, SetOptions(merge: true));
+
+      if (username.isNotEmpty) {
+        await user.updateDisplayName(username);
+      }
+
+      setState(() {
+        photoUrl = url;
+      });
+
+      widget.onProfileImageChanged?.call(photoUrl);
+    } catch (e, s) {
+      debugPrint('Erro ao enviar imagem para o Storage: $e');
+      debugPrint('$s');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erro ao enviar foto: ${e.toString()}',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
     }
   }
 
   Future<void> removeProfileImage() async {
-    final prefs = await SharedPreferences.getInstance();
-    final loggedEmail = prefs.getString('logged_email');
-    if (loggedEmail != null) {
-      await prefs.remove('${loggedEmail}_profile_image');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({'photoUrl': FieldValue.delete()}, SetOptions(merge: true));
+
+      setState(() {
+        localPhotoFile = null;
+        photoUrl = null;
+      });
+
+      widget.onProfileImageChanged?.call(null);
+    } catch (e) {
+      debugPrint('Erro ao remover foto de perfil: $e');
     }
-    setState(() => profileImage = null);
-    widget.onProfileImageChanged?.call(null);
   }
 
   Widget buildTextField({
@@ -78,11 +167,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     Function(String)? onChanged,
     TextInputType keyboardType = TextInputType.text,
   }) {
+    final controller = TextEditingController(text: value);
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: TextField(
         keyboardType: keyboardType,
-        controller: TextEditingController(text: value),
+        controller: controller,
         onChanged: onChanged,
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
@@ -157,6 +247,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  Future<void> _saveProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'name': username,
+        'email': email.isNotEmpty ? email : user.email,
+        'about': sobreMim,
+        'phone': celular,
+        'birthDay': dia,
+        'birthMonth': mes,
+        'birthYear': ano,
+      }, SetOptions(merge: true));
+
+      if (username.isNotEmpty) {
+        await user.updateDisplayName(username);
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      debugPrint('Erro ao salvar perfil: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível salvar seu perfil.',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -175,54 +303,76 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.grey[800],
-                  image: profileImage != null
-                      ? DecorationImage(image: FileImage(profileImage!), fit: BoxFit.cover)
-                      : null,
+                  image: (() {
+                    if (localPhotoFile != null) {
+                      return DecorationImage(
+                        image: FileImage(localPhotoFile!),
+                        fit: BoxFit.cover,
+                      );
+                    }
+                    if (photoUrl != null && photoUrl!.isNotEmpty) {
+                      return DecorationImage(
+                        image: NetworkImage(photoUrl!),
+                        fit: BoxFit.cover,
+                      );
+                    }
+                    return null;
+                  })(),
                 ),
-                child: profileImage == null
+                child: (localPhotoFile == null &&
+                        (photoUrl == null || photoUrl!.isEmpty))
                     ? const Icon(Icons.person, color: Colors.white, size: 50)
                     : null,
               ),
             ),
             const SizedBox(height: 10),
-            GestureDetector(
-              onTap: removeProfileImage,
-              child: Text(
-                'Remover Foto de Perfil',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                  color: Colors.white,
+            if (localPhotoFile != null || (photoUrl != null && photoUrl!.isNotEmpty))
+              GestureDetector(
+                onTap: removeProfileImage,
+                child: Text(
+                  'Remover Foto de Perfil',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: Colors.white,
+                  ),
                 ),
               ),
-            ),
             const SizedBox(height: 25),
 
-            buildTextField(label: 'Nome', value: username, onChanged: (v) => username = v),
-            buildTextField(label: 'Sobre mim', value: sobreMim, onChanged: (v) => sobreMim = v),
-            buildTextField(label: 'E-mail', value: email, onChanged: (v) => email = v),
-            buildTextField(label: 'Celular', value: celular, onChanged: (v) => celular = v),
+            buildTextField(
+              label: 'Nome',
+              value: username,
+              onChanged: (v) => username = v,
+            ),
+            buildTextField(
+              label: 'Sobre mim',
+              value: sobreMim,
+              onChanged: (v) => sobreMim = v,
+            ),
+            buildTextField(
+              label: 'E-mail',
+              value: email,
+              onChanged: (v) => email = v,
+              keyboardType: TextInputType.emailAddress,
+            ),
+            buildTextField(
+              label: 'Celular',
+              value: celular,
+              onChanged: (v) => celular = v,
+              keyboardType: TextInputType.phone,
+            ),
             buildDateField(),
 
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  final loggedEmail = prefs.getString('logged_email');
-                  if (loggedEmail != null) {
-                    await prefs.setString('${loggedEmail}_nome', username);
-                    await prefs.setString('${loggedEmail}_sobre_mim', sobreMim);
-                    await prefs.setString('${loggedEmail}_celular', celular);
-                    await prefs.setString('${loggedEmail}_dia', dia);
-                    await prefs.setString('${loggedEmail}_mes', mes);
-                    await prefs.setString('${loggedEmail}_ano', ano);
-                  }
-                  Navigator.pop(context, true);
-                },
+                onPressed: _saveProfile,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(11),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 20),
                 ),
                 child: Text(

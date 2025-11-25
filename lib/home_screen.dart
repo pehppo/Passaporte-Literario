@@ -3,15 +3,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'book_details_screen.dart';
 import 'settings.dart';
 import 'add_screen.dart';
 import 'diario_screen.dart';
 import 'metas_screen.dart';
 import 'perfil_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-// MODELO DE LIVRO
 class Book {
   final String id;
   final String title;
@@ -40,24 +40,25 @@ class Book {
     return Book(
       id: json['id'] ?? '',
       title: volumeInfo['title'] ?? 'Título não disponível',
-      authors:
-          (volumeInfo['authors'] as List?)?.map((a) => a.toString()).toList() ??
-              ['Autor não disponível'],
+      authors: (volumeInfo['authors'] as List?)
+              ?.map((a) => a.toString())
+              .toList() ??
+          ['Autor não disponível'],
       description: volumeInfo['description'] ?? 'Descrição não disponível',
       thumbnail: (volumeInfo['imageLinks'] != null)
           ? volumeInfo['imageLinks']['thumbnail']
           : '',
       publishedDate: volumeInfo['publishedDate'] ?? 'Ano não disponível',
-      categories:
-          (volumeInfo['categories'] as List?)?.map((c) => c.toString()).toList() ??
-              ['Categoria não disponível'],
+      categories: (volumeInfo['categories'] as List?)
+              ?.map((c) => c.toString())
+              .toList() ??
+          ['Categoria não disponível'],
       pageCount: volumeInfo['pageCount'] ?? 0,
       language: volumeInfo['language'] ?? '',
     );
   }
 }
 
-// BUSCA DE LIVROS
 Future<List<Book>> searchBooks(String query, {int maxResults = 40}) async {
   if (query.isEmpty) return [];
   final url = Uri.parse(
@@ -72,10 +73,6 @@ Future<List<Book>> searchBooks(String query, {int maxResults = 40}) async {
   }
 }
 
-// Helper: only Portuguese results
-// (no language-only filter) - use searchBooks directly
-
-// TOP BAR
 class CustomTopBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final bool showBackButton;
@@ -157,7 +154,6 @@ class CustomTopBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-// BOTTOM NAVIGATION
 class CustomBottomNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
@@ -175,11 +171,31 @@ class CustomBottomNavBar extends StatelessWidget {
     final bottomBarHeight = screenHeight * 0.11;
 
     final List<Map<String, dynamic>> items = [
-      {'icon': Icons.add, 'label': 'Adicionar', 'color': const Color(0xFF4CB050)},
-      {'icon': Icons.book, 'label': 'Meu Diário', 'color': const Color(0xFF12B7FF)},
-      {'icon': Icons.home, 'label': 'Explorar', 'color': const Color(0xFFDD6E00)},
-      {'icon': Icons.flag, 'label': 'Metas', 'color': const Color(0xFFF64136)},
-      {'icon': Icons.person, 'label': 'Perfil', 'color': const Color(0xFFEA9E24)},
+      {
+        'icon': Icons.add,
+        'label': 'Adicionar',
+        'color': const Color(0xFF4CB050)
+      },
+      {
+        'icon': Icons.book,
+        'label': 'Meu Diário',
+        'color': const Color(0xFF12B7FF)
+      },
+      {
+        'icon': Icons.home,
+        'label': 'Explorar',
+        'color': const Color(0xFFDD6E00)
+      },
+      {
+        'icon': Icons.flag,
+        'label': 'Metas',
+        'color': const Color(0xFFF64136)
+      },
+      {
+        'icon': Icons.person,
+        'label': 'Perfil',
+        'color': const Color(0xFFEA9E24)
+      },
     ];
 
     return Container(
@@ -189,7 +205,8 @@ class CustomBottomNavBar extends StatelessWidget {
         children: List.generate(items.length, (index) {
           final item = items[index];
           final bool isActive = currentIndex == index;
-          final Color color = isActive ? item['color'] : const Color(0xFF8B8B94);
+          final Color color =
+              isActive ? item['color'] : const Color(0xFF8B8B94);
           return Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -199,7 +216,8 @@ class CustomBottomNavBar extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(item['icon'], color: color, size: screenWidth * 0.065),
+                    Icon(item['icon'],
+                        color: color, size: screenWidth * 0.065),
                     const SizedBox(height: 4),
                     Text(
                       item['label'],
@@ -220,7 +238,6 @@ class CustomBottomNavBar extends StatelessWidget {
   }
 }
 
-// CATEGORY BOOKS SCREEN
 class CategoryBooksScreen extends StatefulWidget {
   final String categoryName;
   final String query;
@@ -246,7 +263,7 @@ class _CategoryBooksScreenState extends State<CategoryBooksScreen> {
 
   Future<void> fetchCategoryBooks() async {
     try {
-  final results = await searchBooks(widget.query, maxResults: 40);
+      final results = await searchBooks(widget.query, maxResults: 40);
       setState(() {
         books = results;
         isLoading = false;
@@ -338,7 +355,6 @@ class _CategoryBooksScreenState extends State<CategoryBooksScreen> {
   }
 }
 
-// HOME SCREEN
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
   @override
@@ -346,19 +362,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
+
   int _currentIndex = 2;
-  List<Map<String, dynamic>> books = [];
-  // Search UI state (previously local in buildExplorarScreen) — lift to widget state
   final TextEditingController searchController = TextEditingController();
   String searchQuery = '';
   bool isLoading = false;
   List<Book> searchResults = [];
-
-  @override
-  void initState() {
-    super.initState();
-    loadBooks();
-  }
 
   @override
   void dispose() {
@@ -376,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final results = await searchBooks(query);
       setState(() => searchResults = results);
     } catch (e) {
-      print('Erro ao buscar livros: $e');
+      debugPrint('Erro ao buscar livros: $e');
     } finally {
       setState(() => isLoading = false);
     }
@@ -390,29 +401,56 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> loadBooks() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? savedBooks = prefs.getString('books');
-    setState(() {
-      books = savedBooks != null
-          ? List<Map<String, dynamic>>.from(jsonDecode(savedBooks))
-          : [];
-    });
-  }
+  Future<void> addBook(Map<String, dynamic> bookData) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Usuário não autenticado. Faça login novamente.',
+              style: TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
 
-  Future<void> saveBooks() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('books', jsonEncode(books));
-  }
+    final payload = {
+      ...bookData,
+      'userId': user.uid,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
 
-  void addBook(Map<String, dynamic> bookData) async {
-    setState(() {
-      books.add(bookData);
-    });
-    await saveBooks();
-    setState(() {
-      _currentIndex = 1;
-    });
+    try {
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('diary')
+          .add(payload);
+
+      if (mounted) {
+        setState(() {
+          _currentIndex = 1;
+        });
+      }
+    } catch (e, st) {
+      debugPrint('Erro ao salvar livro no Firestore: $e');
+      debugPrint(st.toString());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível salvar o livro no servidor.',
+              style: TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -423,17 +461,20 @@ class _HomeScreenState extends State<HomeScreen> {
           addBook(bookData);
         },
       ),
-      DiarioScreen(books: books),
+      const DiarioScreen(),
       buildExplorarScreen(context),
-      MetasScreen(),
-      PerfilScreen(),
+      const MetasScreen(),
+      const PerfilScreen(),
     ];
 
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: (index) {
+          if (index == _currentIndex) return;
+          setState(() => _currentIndex = index);
+        },
       ),
     );
   }
@@ -441,8 +482,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget buildExplorarScreen(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-
-    // uses state fields: searchController, searchQuery, isLoading, searchResults
 
     final Map<String, String> categories = {
       'Melhores livros brasileiros': 'literatura brasileira',
@@ -472,15 +511,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 controller: searchController,
                 style: GoogleFonts.poppins(color: Colors.white),
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search, color: Colors.white),
+                  prefixIcon:
+                      const Icon(Icons.search, color: Colors.white),
                   suffixIcon: searchQuery.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear, color: Colors.white70),
+                          icon: const Icon(Icons.clear,
+                              color: Colors.white70),
                           onPressed: _clearSearch,
                         )
                       : null,
                   hintText: 'Buscar por título do livro',
-                  hintStyle: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
+                  hintStyle: GoogleFonts.poppins(
+                      color: Colors.white70, fontSize: 13),
                   border: InputBorder.none,
                 ),
                 onChanged: (query) {
@@ -495,11 +537,19 @@ class _HomeScreenState extends State<HomeScreen> {
             child: searchQuery.isNotEmpty
                 ? isLoading
                     ? const Center(child: CircularProgressIndicator())
-                    : buildSearchResults(screenWidth, screenHeight, searchResults)
+                    : buildSearchResults(
+                        screenWidth, screenHeight, searchResults)
                 : ListView(
                     children: categories.entries
-                        .map((entry) => buildCategoryCarousel(
-                            context, entry.key, entry.value, screenWidth, screenHeight))
+                        .map(
+                          (entry) => buildCategoryCarousel(
+                            context,
+                            entry.key,
+                            entry.value,
+                            screenWidth,
+                            screenHeight,
+                          ),
+                        )
                         .toList(),
                   ),
           ),
@@ -508,7 +558,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget buildSearchResults(double screenWidth, double screenHeight, List<Book> searchResults) {
+  Widget buildSearchResults(
+      double screenWidth, double screenHeight, List<Book> searchResults) {
     if (searchResults.isEmpty) {
       return Center(
         child: Text(
@@ -533,7 +584,9 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => BookDetailsScreen(book: book)),
+              MaterialPageRoute(
+                builder: (_) => BookDetailsScreen(book: book),
+              ),
             );
           },
           child: Column(
@@ -552,7 +605,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: double.infinity,
                         height: screenHeight * 0.18,
                         color: Colors.grey,
-                        child: const Icon(Icons.book, color: Colors.white, size: 40),
+                        child: const Icon(Icons.book,
+                            color: Colors.white, size: 40),
                       ),
               ),
               const SizedBox(height: 5),
@@ -583,12 +637,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget buildCategoryCarousel(
-      BuildContext context, String categoryName, String query, double screenWidth, double screenHeight) {
+    BuildContext context,
+    String categoryName,
+    String query,
+    double screenWidth,
+    double screenHeight,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -627,37 +687,49 @@ class _HomeScreenState extends State<HomeScreen> {
         SizedBox(
           height: screenHeight * 0.28,
           child: FutureBuilder<List<Book>>(
-            future: query.trim().isEmpty ? Future.value([]) : searchBooks(query, maxResults: 6),
+            future: query.trim().isEmpty
+                ? Future.value([])
+                : searchBooks(query, maxResults: 6),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData) {
+                return const Center(
+                    child: CircularProgressIndicator());
+              }
               final books = snapshot.data!;
               if (books.isEmpty) {
                 return Center(
                   child: Text(
                     'Nenhum livro encontrado',
-                    style: GoogleFonts.poppins(color: Colors.white70),
+                    style:
+                        GoogleFonts.poppins(color: Colors.white70),
                   ),
                 );
               }
               return ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20),
                 scrollDirection: Axis.horizontal,
                 itemCount: books.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                separatorBuilder: (_, __) =>
+                    const SizedBox(width: 10),
                 itemBuilder: (context, index) {
                   final book = books[index];
                   return GestureDetector(
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => BookDetailsScreen(book: book)),
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              BookDetailsScreen(book: book),
+                        ),
                       );
                     },
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius:
+                              BorderRadius.circular(8),
                           child: book.thumbnail.isNotEmpty
                               ? Image.network(
                                   book.thumbnail,
@@ -669,7 +741,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   width: screenWidth * 0.3,
                                   height: screenHeight * 0.18,
                                   color: Colors.grey,
-                                  child: const Icon(Icons.book, color: Colors.white, size: 40),
+                                  child: const Icon(Icons.book,
+                                      color: Colors.white,
+                                      size: 40),
                                 ),
                         ),
                         const SizedBox(height: 5),

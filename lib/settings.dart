@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:pass_liter/login_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'main.dart'; // Para usar o temaNotifier
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'login_screen.dart';
+import 'main.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,31 +18,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _selectedTheme = 'Escuro';
 
   final List<String> _languages = ['Português', 'English', 'Español'];
-  final List<String> _themes = ['Escuro', 'Claro', 'Sistema'];
+  final List<String> _themes = [
+    'Escuro',
+    'Claro (em breve)',
+    'Padrão do Sistema',
+  ];
 
   @override
   void initState() {
     super.initState();
-    _loadPreferences();
+    _loadPreferencesFromFirestore();
   }
 
-  Future<void> _loadPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _selectedLanguage = prefs.getString('selectedLanguage') ?? 'Português';
-      _selectedTheme = prefs.getString('selectedTheme') ?? 'Escuro';
-    });
+  Future<void> _loadPreferencesFromFirestore() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      final data = doc.data();
+      if (data == null) return;
+
+      final language = data['language'] as String?;
+      final theme = data['theme'] as String?;
+
+      setState(() {
+        _selectedLanguage = language ?? 'Português';
+        _selectedTheme = theme ?? 'Escuro';
+      });
+
+      temaNotifier.value = _selectedTheme;
+    } catch (e) {
+      debugPrint('Erro ao carregar configurações do Firestore: $e');
+    }
   }
 
   Future<void> _saveLanguage(String language) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('selectedLanguage', language);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(
+        {
+          'language': language,
+        },
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      debugPrint('Erro ao salvar idioma no Firestore: $e');
+    }
   }
 
   Future<void> _saveTheme(String theme) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('selectedTheme', theme);
-    temaNotifier.value = theme; // Atualiza tema em tempo real
+    final user = FirebaseAuth.instance.currentUser;
+
+    temaNotifier.value = theme;
+
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(
+        {
+          'theme': theme,
+        },
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      debugPrint('Erro ao salvar tema no Firestore: $e');
+    }
   }
 
   Widget _buildDropdownSetting({
@@ -128,10 +183,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-                Icon(
+                const Icon(
                   Icons.arrow_forward_ios,
                   size: 16,
-                  color: const Color(0xFF7E848D),
+                  color: Color(0xFF7E848D),
                 ),
               ],
             ),
@@ -139,6 +194,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Container(height: 1, color: const Color(0xFF232533)),
         ],
       ),
+    );
+  }
+
+  Future<void> _logout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      debugPrint('erro ao deslogar do Firebase: $e');
+    }
+
+    try {
+      await GoogleSignIn().signOut();
+    } catch (e) {
+      debugPrint('erro ao deslogar do Google: $e');
+    }
+
+    if (!context.mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (route) => false,
     );
   }
 
@@ -198,15 +274,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: IconButton(
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('isLoggedIn', false);
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen()),
-                      (route) => false,
-                    );
-                  },
+                  onPressed: _logout,
                   icon: Icon(
                     Icons.logout,
                     color: Colors.white,
@@ -224,7 +292,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- Sessão Geral ---
               SizedBox(height: screenHeight * 0.04),
               Text(
                 'Geral',
@@ -235,7 +302,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               SizedBox(height: screenHeight * 0.02),
-
               _buildDropdownSetting(
                 title: 'Idioma',
                 currentValue: _selectedLanguage,
@@ -258,24 +324,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontSize14: fontSize14,
               ),
               SizedBox(height: screenHeight * 0.01),
-
               _buildSettingRow(
                 title: 'Fale Conosco',
                 fontSize14: fontSize14,
                 onTap: () {
-                  // ação fale conosco
                 },
               ),
-              SizedBox(height: screenHeight * 0.01),
-              _buildSettingRow(
-                title: 'Notificações',
-                fontSize14: fontSize14,
-                onTap: () {
-                  // ação notificações
-                },
-              ),
-
-              // --- Sessão Segurança ---
               SizedBox(height: screenHeight * 0.04),
               Text(
                 'Segurança',
@@ -286,12 +340,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               SizedBox(height: screenHeight * 0.02),
-
               _buildSettingRow(
                 title: 'Alterar Senha',
                 fontSize14: fontSize14,
                 onTap: () {
-                  // ação alterar senha
                 },
               ),
               SizedBox(height: screenHeight * 0.01),
@@ -299,7 +351,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'Termos de Uso',
                 fontSize14: fontSize14,
                 onTap: () {
-                  // ação termos de uso
                 },
               ),
               SizedBox(height: screenHeight * 0.01),
@@ -307,7 +358,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'Reportar Erro',
                 fontSize14: fontSize14,
                 onTap: () {
-                  // ação reportar erro
                 },
               ),
             ],

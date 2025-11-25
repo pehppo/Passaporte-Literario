@@ -1,7 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -20,17 +21,6 @@ class _CadastroScreenState extends State<CadastroScreen> {
   bool _erroCadastro = false;
   String _mensagemErro = '';
 
-  Future<bool> verificarEmailExiste(String email) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.containsKey(email);
-  }
-
-  Future<void> cadastrarConta(String nome, String email, String senha) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(email, senha);
-    await prefs.setString('${email}_nome', nome);
-  }
-
   PageRouteBuilder<T> slidePageRoute<T>({
     required Widget page,
     bool fromRight = true,
@@ -40,12 +30,10 @@ class _CadastroScreenState extends State<CadastroScreen> {
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         final beginOffset = fromRight ? const Offset(1, 0) : const Offset(-1, 0);
         final endOffset = Offset.zero;
-        final tween = Tween(begin: beginOffset, end: endOffset)
-            .chain(CurveTween(curve: Curves.easeInOut));
-        return SlideTransition(
-          position: animation.drive(tween),
-          child: child,
+        final tween = Tween(begin: beginOffset, end: endOffset).chain(
+          CurveTween(curve: Curves.easeInOut),
         );
+        return SlideTransition(position: animation.drive(tween), child: child);
       },
     );
   }
@@ -55,7 +43,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    final paddingHorizontal = screenWidth * 0.05; 
+    final paddingHorizontal = screenWidth * 0.05;
     final logoSize = screenWidth * 0.4;
     final campoHeight = screenHeight * 0.07;
     final espacamentoTopo = screenHeight * 0.08;
@@ -77,10 +65,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                   child: SizedBox(
                     width: logoSize,
                     height: logoSize,
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      fit: BoxFit.contain,
-                    ),
+                    child: Image.asset('assets/images/logo.png'),
                   ),
                 ),
                 SizedBox(height: screenHeight * 0.03),
@@ -96,12 +81,10 @@ class _CadastroScreenState extends State<CadastroScreen> {
                 ),
                 SizedBox(height: screenHeight * 0.05),
 
-                // Nome
                 Text(
                   'Insira seu Nome de Usuário',
                   style: GoogleFonts.poppins(
                     fontSize: fonteTexto * 0.875,
-                    fontWeight: FontWeight.w400,
                     color: const Color(0xFFA2A2A7),
                   ),
                 ),
@@ -110,7 +93,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                   height: campoHeight,
                   decoration: const BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: Color(0xFF232533), width: 1),
+                      bottom: BorderSide(color: Color(0xFF232533)),
                     ),
                   ),
                   child: Row(
@@ -127,14 +110,12 @@ class _CadastroScreenState extends State<CadastroScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: espacamentoEntreCampos),
 
-                // E-mail
+                SizedBox(height: espacamentoEntreCampos),
                 Text(
                   'Insira seu e-mail',
                   style: GoogleFonts.poppins(
                     fontSize: fonteTexto * 0.875,
-                    fontWeight: FontWeight.w400,
                     color: const Color(0xFFA2A2A7),
                   ),
                 ),
@@ -143,7 +124,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                   height: campoHeight,
                   decoration: const BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: Color(0xFF232533), width: 1),
+                      bottom: BorderSide(color: Color(0xFF232533)),
                     ),
                   ),
                   child: Row(
@@ -161,38 +142,37 @@ class _CadastroScreenState extends State<CadastroScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: espacamentoEntreCampos),
 
-                // Senha
+                SizedBox(height: espacamentoEntreCampos),
                 Text(
                   'Senha',
                   style: GoogleFonts.poppins(
                     fontSize: fonteTexto * 0.875,
-                    fontWeight: FontWeight.w400,
                     color: const Color(0xFFA2A2A7),
                   ),
                 ),
-                SizedBox(height: 0),
                 Container(
                   height: campoHeight,
                   decoration: const BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: Color(0xFF232533), width: 1),
-                    ),
+                    border: Border(bottom: BorderSide(color: Color(0xFF232533))),
                   ),
-                  child: PasswordField(controller: senhaController, iconSize: screenWidth * 0.06, fontSize: fonteTexto),
+                  child: PasswordField(
+                    controller: senhaController,
+                    iconSize: screenWidth * 0.06,
+                    fontSize: fonteTexto,
+                  ),
                 ),
+
                 SizedBox(height: screenHeight * 0.05),
 
-                // Botão Cadastrar
                 SizedBox(
                   width: double.infinity,
-                  height: campoHeight * 1.0,
+                  height: campoHeight,
                   child: ElevatedButton(
                     onPressed: () async {
-                      String nome = nomeController.text.trim();
-                      String email = emailController.text.trim();
-                      String senha = senhaController.text.trim();
+                      final nome = nomeController.text.trim();
+                      final email = emailController.text.trim();
+                      final senha = senhaController.text.trim();
                       final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
 
                       setState(() {
@@ -208,21 +188,44 @@ class _CadastroScreenState extends State<CadastroScreen> {
                         return;
                       }
 
-                      bool existe = await verificarEmailExiste(email);
-                      if (existe) {
+                      try {
+                        final cred = await FirebaseAuth.instance
+                            .createUserWithEmailAndPassword(email: email, password: senha);
+
+                        final user = cred.user;
+                        if (user == null) throw Exception('Usuário nulo');
+
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(user.uid)
+                            .set({
+                          'nome': nome,
+                          'email': email,
+                          'createdAt': FieldValue.serverTimestamp(),
+                        });
+
+                        if (!mounted) return;
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => const HomeScreen()),
+                        );
+                      } on FirebaseAuthException catch (e) {
+                        String msg;
+                        if (e.code == 'email-already-in-use') msg = 'Este e-mail já está em uso.';
+                        else if (e.code == 'weak-password') msg = 'A senha é muito fraca.';
+                        else if (e.code == 'invalid-email') msg = 'E-mail inválido.';
+                        else msg = 'Erro: ${e.code.replaceAll('-', ' ')}';
+
                         setState(() {
                           _erroCadastro = true;
-                          _mensagemErro = 'E-mail já cadastrado';
+                          _mensagemErro = msg;
                         });
-                        return;
+                      } catch (e) {
+                        setState(() {
+                          _erroCadastro = true;
+                          _mensagemErro = 'Erro inesperado. Tente novamente.';
+                        });
                       }
-
-                      await cadastrarConta(nome, email, senha);
-
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => const HomeScreen()),
-                      );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
@@ -240,6 +243,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                     ),
                   ),
                 ),
+
                 SizedBox(height: screenHeight * 0.02),
 
                 if (_erroCadastro)
@@ -248,9 +252,10 @@ class _CadastroScreenState extends State<CadastroScreen> {
                     style: GoogleFonts.poppins(
                       fontSize: fonteTexto * 0.8,
                       fontWeight: FontWeight.w500,
-                      color: Colors.red.shade400,
+                      color: Colors.redAccent,
                     ),
                   ),
+
                 SizedBox(height: screenHeight * 0.03),
 
                 Center(
@@ -259,7 +264,6 @@ class _CadastroScreenState extends State<CadastroScreen> {
                       text: 'Já tem uma conta? ',
                       style: GoogleFonts.poppins(
                         fontSize: fonteTexto * 0.8,
-                        fontWeight: FontWeight.w400,
                         color: const Color(0xFFA2A2A7),
                       ),
                       children: [
@@ -274,7 +278,10 @@ class _CadastroScreenState extends State<CadastroScreen> {
                             ..onTap = () {
                               Navigator.pushReplacement(
                                 context,
-                                slidePageRoute(page: const LoginScreen(), fromRight: false),
+                                slidePageRoute(
+                                  page: const LoginScreen(),
+                                  fromRight: false,
+                                ),
                               );
                             },
                         ),
@@ -282,6 +289,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                     ),
                   ),
                 ),
+
                 SizedBox(height: screenHeight * 0.05),
               ],
             ),
@@ -296,7 +304,13 @@ class PasswordField extends StatefulWidget {
   final TextEditingController controller;
   final double iconSize;
   final double fontSize;
-  const PasswordField({super.key, required this.controller, required this.iconSize, required this.fontSize});
+
+  const PasswordField({
+    super.key,
+    required this.controller,
+    required this.iconSize,
+    required this.fontSize,
+  });
 
   @override
   State<PasswordField> createState() => _PasswordFieldState();

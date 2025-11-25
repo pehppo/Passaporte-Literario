@@ -1,10 +1,9 @@
-import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'edit_profile.dart';
-import 'home_screen.dart'; // CustomTopBar
+import 'home_screen.dart';
 import 'wishlist_screen.dart';
 import 'donate_screen.dart';
 
@@ -18,8 +17,8 @@ class PerfilScreen extends StatefulWidget {
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
 class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
-  File? profileImage;
   String username = "Usuário";
+  String? photoUrl;
 
   int livrosLidos = 0;
   int metasConcluidas = 0;
@@ -31,8 +30,7 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
   @override
   void initState() {
     super.initState();
-    loadUsername();
-    loadProfileImage();
+    loadUserProfile();
     loadStats();
   }
 
@@ -51,104 +49,129 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
 
   @override
   void didPopNext() {
-    // Atualiza estatísticas ao voltar para a tela
+    loadUserProfile();
     loadStats();
   }
 
-  Future<void> loadUsername() async {
-    final prefs = await SharedPreferences.getInstance();
-    final email = prefs.getString('logged_email');
-    if (email != null) {
+  Future<void> loadUserProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      final data = doc.data() ?? {};
+
+      if (!mounted) return;
       setState(() {
-        username = prefs.getString('${email}_nome') ?? 'Usuário';
+        username = (data['name'] as String?) ??
+            user.displayName ??
+            username;
+        photoUrl = data['photoUrl'] as String?;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        username = user.displayName ?? username;
       });
     }
-  }
-
-  Future<void> loadProfileImage() async {
-    final prefs = await SharedPreferences.getInstance();
-    final email = prefs.getString('logged_email');
-    if (email != null) {
-      final imagePath = prefs.getString('${email}_profile_image');
-      if (imagePath != null) {
-        setState(() {
-          profileImage = File(imagePath);
-        });
-      }
-    }
-  }
-
-  Future<void> removeProfileImage() async {
-    final prefs = await SharedPreferences.getInstance();
-    final loggedEmail = prefs.getString('logged_email');
-    if (loggedEmail != null) {
-      await prefs.remove('${loggedEmail}_profile_image');
-    }
-    setState(() {
-      profileImage = null;
-    });
-    Navigator.pop(context, true);
   }
 
   Future<void> loadStats() async {
     setState(() => isLoadingStats = true);
-    final prefs = await SharedPreferences.getInstance();
 
-    // Carregar livros do Diário
-    final diarioData = prefs.getString('books');
-    if (diarioData != null) {
-      final List<dynamic> livros = jsonDecode(diarioData);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          livrosLidos = 0;
+          paginasLidas = 0;
+          avaliacoes = 0;
+          metasConcluidas = 0;
+          wishlistCount = 0;
+          isLoadingStats = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      final diarySnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('diary')
+          .get();
+
       int totalPaginas = 0;
       int totalEstrelas = 0;
 
-      for (var livro in livros) {
-        totalPaginas += int.tryParse(livro['pages']?.toString() ?? '0') ?? 0;
-        totalEstrelas += int.tryParse(livro['rating']?.toString() ?? '0') ?? 0;
+      for (final doc in diarySnap.docs) {
+        final data = doc.data();
+        final pagesVal = data['pages'];
+        final ratingVal = data['rating'];
+
+        totalPaginas += int.tryParse(pagesVal?.toString() ?? '0') ?? 0;
+        totalEstrelas += int.tryParse(ratingVal?.toString() ?? '0') ?? 0;
       }
 
+      final totalLivros = diarySnap.docs.length;
+
+      int concluidas = 0;
+      try {
+        final metasSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('goals')
+            .get();
+
+        for (final doc in metasSnap.docs) {
+          final data = doc.data();
+          final pagesRead = data['pagesRead'] ?? 0;
+          final totalPages = data['totalPages'] ?? 1;
+          if (pagesRead >= totalPages) {
+            concluidas++;
+          }
+        }
+      } catch (_) {
+        concluidas = 0;
+      }
+
+      int wlCount = 0;
+      try {
+        final wlSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('wishlist')
+            .get();
+        wlCount = wlSnap.docs.length;
+      } catch (_) {
+        wlCount = 0;
+      }
+
+      if (!mounted) return;
       setState(() {
-        livrosLidos = livros.length;
+        livrosLidos = totalLivros;
         paginasLidas = totalPaginas;
         avaliacoes = totalEstrelas;
+        metasConcluidas = concluidas;
+        wishlistCount = wlCount;
+        isLoadingStats = false;
       });
-    } else {
+    } catch (e) {
+      debugPrint('Erro ao carregar estatísticas: $e');
+      if (!mounted) return;
       setState(() {
         livrosLidos = 0;
         paginasLidas = 0;
         avaliacoes = 0;
-      });
-    }
-
-    // Carregar metas
-    final metasData = prefs.getString('metas');
-    if (metasData != null) {
-      final List<dynamic> metasList = jsonDecode(metasData);
-      int concluidas = metasList
-          .where(
-            (meta) => (meta['pagesRead'] ?? 0) >= (meta['totalPages'] ?? 1),
-          )
-          .length;
-      setState(() {
-        metasConcluidas = concluidas;
-      });
-    } else {
-      setState(() {
         metasConcluidas = 0;
+        wishlistCount = 0;
+        isLoadingStats = false;
       });
     }
-    // Carregar wishlist count
-    final wishlistData = prefs.getString('wishlist');
-    if (wishlistData != null) {
-      try {
-        final List<dynamic> list = jsonDecode(wishlistData);
-        setState(() => wishlistCount = list.length);
-      } catch (e) {
-        setState(() => wishlistCount = 0);
-      }
-    } else {
-      setState(() => wishlistCount = 0);
-    }
-    if (mounted) setState(() => isLoadingStats = false);
   }
 
   Widget buildStatBox({
@@ -258,7 +281,6 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Foto + nome
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -268,14 +290,14 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.grey[800],
-                        image: profileImage != null
+                        image: (photoUrl != null && photoUrl!.isNotEmpty)
                             ? DecorationImage(
-                                image: FileImage(profileImage!),
+                                image: NetworkImage(photoUrl!),
                                 fit: BoxFit.cover,
                               )
                             : null,
                       ),
-                      child: profileImage == null
+                      child: (photoUrl == null || photoUrl!.isEmpty)
                           ? const Icon(
                               Icons.person,
                               color: Colors.white,
@@ -298,7 +320,6 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
                 ),
                 const SizedBox(height: 30),
 
-                // Estatísticas com botão de refresh
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -313,11 +334,8 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
                     IconButton(
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
-                      onPressed: isLoadingStats
-                          ? null
-                          : () async {
-                              await loadStats();
-                            },
+                      onPressed:
+                          isLoadingStats ? null : () async => loadStats(),
                       icon: isLoadingStats
                           ? const SizedBox(
                               width: 18,
@@ -333,6 +351,7 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
                   ],
                 ),
                 const SizedBox(height: 20),
+
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -389,7 +408,6 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
                 ),
                 const SizedBox(height: 30),
 
-                // Acesso Rápido
                 Text(
                   'Acesso Rápido',
                   style: GoogleFonts.poppins(
@@ -410,17 +428,16 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
                           context,
                           MaterialPageRoute(
                             builder: (context) => EditProfileScreen(
-                              onProfileImageChanged: (File? img) {
+                              onProfileImageChanged: (String? url) {
                                 setState(() {
-                                  profileImage = img;
+                                  photoUrl = url;
                                 });
                               },
                             ),
                           ),
                         );
                         if (atualizado == true) {
-                          loadUsername();
-                          loadProfileImage();
+                          loadUserProfile();
                         }
                       },
                     ),
