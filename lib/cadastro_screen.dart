@@ -1,10 +1,11 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_screen.dart';
-import 'home_screen.dart';
 
 class CadastroScreen extends StatefulWidget {
   const CadastroScreen({super.key});
@@ -204,17 +205,39 @@ class _CadastroScreenState extends State<CadastroScreen> {
                           'createdAt': FieldValue.serverTimestamp(),
                         });
 
+                        if (!user.emailVerified) {
+                          await user.sendEmailVerification();
+                        }
+
+                        await FirebaseAuth.instance.signOut();
+
                         if (!mounted) return;
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                           SnackBar(
+                             content: Text(
+                               'Conta criada com sucesso! Verifique seu e-mail para validar a conta antes de entrar.',
+                               style: GoogleFonts.poppins(),
+                             ),
+                             backgroundColor: Colors.green,
+                             duration: const Duration(seconds: 5),
+                           ),
+                        );
+
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const HomeScreen()),
+                          slidePageRoute(
+                            page: const LoginScreen(),
+                            fromRight: false,
+                          ),
                         );
+                        
                       } on FirebaseAuthException catch (e) {
                         String msg;
-                        if (e.code == 'email-already-in-use') msg = 'Este e-mail já está em uso.';
-                        else if (e.code == 'weak-password') msg = 'A senha é muito fraca.';
-                        else if (e.code == 'invalid-email') msg = 'E-mail inválido.';
-                        else msg = 'Erro: ${e.code.replaceAll('-', ' ')}';
+                        if (e.code == 'email-already-in-use') {msg = 'Este e-mail já está em uso.';}
+                        else if (e.code == 'weak-password') {msg = 'A senha é muito fraca.';}
+                        else if (e.code == 'invalid-email') {msg = 'E-mail inválido.';}
+                        else {msg = 'Erro: ${e.code.replaceAll('-', ' ')}';}
 
                         setState(() {
                           _erroCadastro = true;

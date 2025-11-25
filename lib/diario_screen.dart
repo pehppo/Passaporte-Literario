@@ -257,7 +257,7 @@ class _DiarioScreenState extends State<DiarioScreen> {
                         screenWidth: screenWidth,
                         screenHeight: screenHeight,
                       ),
-                    SizedBox(width: screenWidth * 0.07),
+                      SizedBox(width: screenWidth * 0.07),
                       _buildStatBox(
                         icon: Icons.show_chart,
                         value: avgPagesAll.toStringAsFixed(0),
@@ -327,27 +327,35 @@ class _DiarioScreenState extends State<DiarioScreen> {
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: (book['image'] != null &&
-                                              book['image']
-                                                  .toString()
-                                                  .isNotEmpty)
-                                          ? Image.file(
-                                              File(book['image']),
-                                              width: 72,
-                                              height: 97,
-                                              fit: BoxFit.cover,
+                                    Container(
+                                      width: 72,
+                                      height: 97,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        color: Colors.grey.shade800,
+                                        image: (book['image'] != null &&
+                                                book['image']
+                                                    .toString()
+                                                    .isNotEmpty)
+                                            ? DecorationImage(
+                                                image: (book['image']
+                                                        .toString()
+                                                        .startsWith('http')
+                                                    ? NetworkImage(
+                                                        book['image'])
+                                                    : FileImage(File(
+                                                        book['image']))) as ImageProvider,
+                                                fit: BoxFit.cover,
+                                              )
+                                            : null,
+                                      ),
+                                      child: (book['image'] == null ||
+                                              book['image'].toString().isEmpty)
+                                          ? const Icon(
+                                              Icons.book,
+                                              color: Colors.white70,
                                             )
-                                          : Container(
-                                              width: 72,
-                                              height: 97,
-                                              color: Colors.grey.shade800,
-                                              child: const Icon(
-                                                Icons.book,
-                                                color: Colors.white70,
-                                              ),
-                                            ),
+                                          : null,
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
@@ -396,8 +404,8 @@ class _DiarioScreenState extends State<DiarioScreen> {
                                           Row(
                                             children: [
                                               GestureDetector(
-                                                onTap: () => openEditScreen(
-                                                    docId, book),
+                                                onTap: () =>
+                                                    openEditScreen(docId, book),
                                                 child: const Icon(
                                                   Icons.edit,
                                                   color: Colors.blue,

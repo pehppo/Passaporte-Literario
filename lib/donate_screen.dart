@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -54,6 +56,7 @@ class _DonateScreenState extends State<DonateScreen> {
             StatefulBuilder(
               builder: (context, setStateSB) {
                 return DropdownButtonFormField<String>(
+                  dropdownColor: const Color(0xFF27273A),
                   initialValue: selected,
                   items: ['Novo', 'Bom', 'Ruim']
                       .map(
@@ -61,7 +64,7 @@ class _DonateScreenState extends State<DonateScreen> {
                           value: s,
                           child: Text(
                             s,
-                            style: GoogleFonts.poppins(fontSize: 12),
+                            style: GoogleFonts.poppins(fontSize: 12, color: Colors.white),
                           ),
                         ),
                       )
@@ -263,7 +266,9 @@ class _DonateScreenState extends State<DonateScreen> {
                                 color: Colors.grey.shade800,
                                 image: imagePath.isNotEmpty
                                     ? DecorationImage(
-                                        image: FileImage(File(imagePath)),
+                                        image: (imagePath.startsWith('http')
+                                            ? NetworkImage(imagePath)
+                                            : FileImage(File(imagePath))) as ImageProvider,
                                         fit: BoxFit.cover,
                                       )
                                     : null,

@@ -67,7 +67,7 @@ class _PerfilScreenState extends State<PerfilScreen> with RouteAware {
 
       if (!mounted) return;
       setState(() {
-        username = (data['name'] as String?) ??
+        username = (data['nome'] as String?) ??
             user.displayName ??
             username;
         photoUrl = data['photoUrl'] as String?;

@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -70,7 +72,7 @@ class _MetasScreenState extends State<MetasScreen> {
           'totalPages': data['totalPages'] ?? 0,
           'daysToRead': data['daysToRead'] ?? 1,
           'pagesRead': data['pagesRead'] ?? 0,
-          'coverImagePath': data['coverImageUrl'] ?? null,
+          'coverImagePath': data['coverImageUrl'],
         };
       }).toList();
 
@@ -518,22 +520,23 @@ class _MetasScreenState extends State<MetasScreen> {
                             ),
                             Row(
                               children: [
-                                IconButton(
-                                  onPressed: () async {
-                                    final newPages =
-                                        pagesRead + dailyPages > totalPages
-                                            ? totalPages
-                                            : pagesRead + dailyPages;
-                                    setState(() {
-                                      metas[index]['pagesRead'] = newPages;
-                                    });
-                                    await updatePagesRead(index, newPages);
-                                  },
-                                  icon: const Icon(
-                                    Icons.check,
-                                    color: Color(0xFF4CAF50),
+                                if (pagesRead < totalPages)
+                                  IconButton(
+                                    onPressed: () async {
+                                      final newPages =
+                                          pagesRead + dailyPages > totalPages
+                                              ? totalPages
+                                              : pagesRead + dailyPages;
+                                      setState(() {
+                                        metas[index]['pagesRead'] = newPages;
+                                      });
+                                      await updatePagesRead(index, newPages);
+                                    },
+                                    icon: const Icon(
+                                      Icons.check,
+                                      color: Color(0xFF4CAF50),
+                                    ),
                                   ),
-                                ),
                                 IconButton(
                                   onPressed: () => deleteMeta(index),
                                   icon: const Icon(
@@ -548,7 +551,7 @@ class _MetasScreenState extends State<MetasScreen> {
                       ],
                     ),
                   );
-                }).toList(),
+                }),
               ],
             ),
     );
