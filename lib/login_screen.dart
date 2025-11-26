@@ -183,7 +183,8 @@ class _LoginScreenState extends State<LoginScreen>
     return PageRouteBuilder(
       pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final beginOffset = fromRight ? const Offset(1, 0) : const Offset(-1, 0);
+        final beginOffset =
+            fromRight ? const Offset(1, 0) : const Offset(-1, 0);
         final endOffset = Offset.zero;
         final tween = Tween(begin: beginOffset, end: endOffset)
             .chain(CurveTween(curve: Curves.easeInOut));
@@ -256,21 +257,27 @@ class _LoginScreenState extends State<LoginScreen>
                     decoration: BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
-                          color: _erroLogin ? Colors.red.shade400 : const Color(0xFF232533),
+                          color: _erroLogin
+                              ? Colors.red.shade400
+                              : const Color(0xFF232533),
                           width: 1,
                         ),
                       ),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.email, color: const Color(0xFFA2A2A7), size: screenWidth * 0.06),
+                        Icon(Icons.email,
+                            color: const Color(0xFFA2A2A7),
+                            size: screenWidth * 0.06),
                         SizedBox(width: screenWidth * 0.02),
                         Expanded(
                           child: TextField(
                             controller: emailController,
-                            style: TextStyle(color: Colors.white, fontSize: fonteTexto),
+                            style: TextStyle(
+                                color: Colors.white, fontSize: fonteTexto),
                             keyboardType: TextInputType.emailAddress,
-                            decoration: const InputDecoration(border: InputBorder.none),
+                            decoration:
+                                const InputDecoration(border: InputBorder.none),
                           ),
                         ),
                       ],
@@ -300,7 +307,9 @@ class _LoginScreenState extends State<LoginScreen>
                     decoration: BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
-                          color: _erroLogin ? Colors.red.shade400 : const Color(0xFF232533),
+                          color: _erroLogin
+                              ? Colors.red.shade400
+                              : const Color(0xFF232533),
                           width: 1,
                         ),
                       ),
@@ -338,16 +347,20 @@ class _LoginScreenState extends State<LoginScreen>
                     onPressed: () async {
                       String email = emailController.text.trim();
                       String senha = senhaController.text.trim();
-                      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                      final emailRegex =
+                          RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
 
                       setState(() => _erroLogin = false);
 
-                      if (email.isEmpty || !emailRegex.hasMatch(email) || senha.isEmpty) {
+                      if (email.isEmpty ||
+                          !emailRegex.hasMatch(email) ||
+                          senha.isEmpty) {
                         await _triggerError();
                         return;
                       }
 
                       bool sucesso = await verificarLogin(email, senha);
+                      debugPrint('verificarLogin result: $sucesso');
                       if (!sucesso) {
                         // Se falhar (senha errada ou email não verificado), aciona erro visual
                         await _triggerError();
@@ -368,7 +381,8 @@ class _LoginScreenState extends State<LoginScreen>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                        borderRadius:
+                            BorderRadius.circular(screenWidth * 0.02),
                       ),
                     ),
                     child: Text(

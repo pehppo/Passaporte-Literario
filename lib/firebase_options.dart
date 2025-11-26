@@ -48,6 +48,18 @@ class DefaultFirebaseOptions {
       default:
         throw UnsupportedError(
           'DefaultFirebaseOptions are not supported for this platform.',
+        'Firebase não configurado para Web. Apenas Android está ativo.',
+      );
+    }
+
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return android;
+
+      default:
+        throw UnsupportedError(
+          'Firebase não configurado para esta plataforma. '
+          'Apenas Android está ativo.',
         );
     }
   }

@@ -10,6 +10,17 @@ import 'package:http/http.dart' as http;
 class EditProfileScreen extends StatefulWidget {
   final Function(String?)? onProfileImageChanged;
   final String? currentName; 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'home_screen.dart';
+
+class EditProfileScreen extends StatefulWidget {
+  final Function(String?)? onProfileImageChanged;
 
   const EditProfileScreen({
     super.key, 
@@ -39,6 +50,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   static const String _cloudinaryCloudName = 'CLOUDINARY_CLOUD_NAME';
   static const String _cloudinaryUploadPreset = 'CLOUDINARY_UPLOAD_PRESET';
+  String username = '';
+  String email = '';
+  String sobreMim = '';
+  String celular = '';
+  String dia = '';
+  String mes = '';
+  String ano = '';
+
+  String? photoUrl;
+  File? localPhotoFile;
+
+  final ImagePicker picker = ImagePicker();
+
+  static const String _cloudinaryCloudName = 'dtottvkil';
+  static const String _cloudinaryUploadPreset = 'pass-liter';
 
   @override
   void initState() {
@@ -88,6 +114,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _monthController.text = data['birthMonth'] ?? '';
         _yearController.text = data['birthYear'] ?? '';
 
+        email = data['email'] ?? user.email ?? '';
+        username = data['name'] ?? user.displayName ?? '';
+        sobreMim = data['about'] ?? '';
+        celular = data['phone'] ?? '';
+        dia = data['birthDay'] ?? '';
+        mes = data['birthMonth'] ?? '';
+        ano = data['birthYear'] ?? '';
         photoUrl = data['photoUrl'];
       });
     } catch (e) {
@@ -112,6 +145,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Enviando foto de perfil...', style: GoogleFonts.poppins()),
+          content: Text(
+            'Enviando foto de perfil...',
+            style: GoogleFonts.poppins(),
+          ),
           duration: const Duration(minutes: 1),
         ),
       );
@@ -153,6 +190,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           SnackBar(content: Text('Erro ao enviar foto.', style: GoogleFonts.poppins())),
         );
       }
+        throw Exception('Cloudinary upload failed: ${response.statusCode} ${response.body}');
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final url = (data['secure_url'] ?? data['url']) as String?;
+      if (url == null) throw Exception('Cloudinary did not return a URL');
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({'photoUrl': url}, SetOptions(merge: true));
+
+      if (username.isNotEmpty) {
+        await user.updateDisplayName(username);
+      }
+
+      setState(() {
+        photoUrl = url;
+      });
+
+      widget.onProfileImageChanged?.call(photoUrl);
+    } catch (e, s) {
+      debugPrint('Erro ao enviar imagem para o Storage: $e');
+      debugPrint('$s');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erro ao enviar foto: ${e.toString()}',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
     }
   }
 
@@ -161,6 +234,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (user == null) return;
 
     try {
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -228,6 +302,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
+      debugPrint('Erro ao remover foto de perfil: $e');
     }
   }
 
@@ -236,11 +311,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required TextEditingController controller,
     TextInputType keyboardType = TextInputType.text,
   }) {
+    final controller = TextEditingController(text: value);
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: TextField(
         keyboardType: keyboardType,
         controller: controller,
+        onChanged: onChanged,
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           labelText: label,
@@ -309,6 +386,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         const SizedBox(height: 20),
       ],
     );
+  }
+
+  Future<void> _saveProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'name': username,
+        'email': email.isNotEmpty ? email : user.email,
+        'about': sobreMim,
+        'phone': celular,
+        'birthDay': dia,
+        'birthMonth': mes,
+        'birthYear': ano,
+      }, SetOptions(merge: true));
+
+      if (username.isNotEmpty) {
+        await user.updateDisplayName(username);
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      debugPrint('Erro ao salvar perfil: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível salvar seu perfil.',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -393,6 +508,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             buildTextField(
               label: 'E-mail',
               controller: _emailController,
+              value: username,
+              onChanged: (v) => username = v,
+            ),
+            buildTextField(
+              label: 'Sobre mim',
+              value: sobreMim,
+              onChanged: (v) => sobreMim = v,
+            ),
+            buildTextField(
+              label: 'E-mail',
+              value: email,
+              onChanged: (v) => email = v,
               keyboardType: TextInputType.emailAddress,
             ),
             buildTextField(
@@ -401,6 +528,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               keyboardType: TextInputType.phone,
             ),
             
+              value: celular,
+              onChanged: (v) => celular = v,
+              keyboardType: TextInputType.phone,
+            ),
             buildDateField(),
 
             SizedBox(
@@ -408,10 +539,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               height: 56,
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _saveProfile,
+                onPressed: _saveProfile,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(11),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                ),
+                child: Text(
+                  'Salvar alterações',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: const Color(0xFF141425),
                   ),
                   elevation: 0,
                 ),
