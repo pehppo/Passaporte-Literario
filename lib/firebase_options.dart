@@ -53,10 +53,10 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBMLWKaRB61-nt8Gg3HJkH8kgpIab3u-Xw',
-    appId: '1:966353511346:android:2188b151cd06e682e6faab',
-    messagingSenderId: '966353511346',
-    projectId: 'app-passap-literario',
-    storageBucket: 'app-passap-literario.firebasestorage.app',
+    apiKey: 'FIREBASE_API_KEY',
+    appId: 'FIREBASE_APP_ID',
+    messagingSenderId: 'FIREBASE_MESSAGING_SENDER_ID',
+    projectId: 'FIREBASE_PROJECT_ID',
+    storageBucket: 'FIREBASE_STORAGE_BUCKET',
   );
 }
