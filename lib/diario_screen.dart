@@ -167,6 +167,87 @@ class _DiarioScreenState extends State<DiarioScreen> {
     );
   }
 
+  // NOTE: width/height devem estar sincronizados com o Container que envolve o cover.
+  // Altere aqui caso mude o tamanho da capa no layout.
+  static const double _coverWidth = 72;
+  static const double _coverHeight = 97;
+
+  Widget _buildBookImage(String? imagePath) {
+    // placeholder widget
+    Widget placeholder() {
+      return Container(
+        width: _coverWidth,
+        height: _coverHeight,
+        color: Colors.grey.shade800,
+        child: const Center(
+          child: Icon(Icons.book, color: Colors.white70, size: 30),
+        ),
+      );
+    }
+
+    if (imagePath == null || imagePath.trim().isEmpty) {
+      return placeholder();
+    }
+
+    // Remote image (URL)
+    if (imagePath.startsWith('http')) {
+      return Image.network(
+        imagePath,
+        fit: BoxFit.cover,
+        width: _coverWidth,
+        height: _coverHeight,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                    : null,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            width: _coverWidth,
+            height: _coverHeight,
+            color: Colors.grey.shade800,
+            child: const Center(
+              child: Icon(Icons.broken_image, color: Colors.white70),
+            ),
+          );
+        },
+      );
+    }
+
+    // Local file path
+    try {
+      final file = File(imagePath);
+      if (!file.existsSync()) {
+        return placeholder();
+      }
+
+      return Image.file(
+        file,
+        fit: BoxFit.cover,
+        width: _coverWidth,
+        height: _coverHeight,
+        errorBuilder: (context, error, stackTrace) {
+          return placeholder();
+        },
+      );
+    } catch (e) {
+      // Em caso de path inválido ou erro ao criar File
+      return placeholder();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -312,6 +393,7 @@ class _DiarioScreenState extends State<DiarioScreen> {
                         final book = filteredBooks[index];
                         final docId = book['id'] as String;
                         final isExpanded = expandedBooks.contains(docId);
+                        final imagePath = book['image']?.toString();
 
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 20),
@@ -327,35 +409,18 @@ class _DiarioScreenState extends State<DiarioScreen> {
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    // Capa do livro
                                     Container(
-                                      width: 72,
-                                      height: 97,
+                                      width: _coverWidth,
+                                      height: _coverHeight,
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(8),
                                         color: Colors.grey.shade800,
-                                        image: (book['image'] != null &&
-                                                book['image']
-                                                    .toString()
-                                                    .isNotEmpty)
-                                            ? DecorationImage(
-                                                image: (book['image']
-                                                        .toString()
-                                                        .startsWith('http')
-                                                    ? NetworkImage(
-                                                        book['image'])
-                                                    : FileImage(File(
-                                                        book['image']))) as ImageProvider,
-                                                fit: BoxFit.cover,
-                                              )
-                                            : null,
                                       ),
-                                      child: (book['image'] == null ||
-                                              book['image'].toString().isEmpty)
-                                          ? const Icon(
-                                              Icons.book,
-                                              color: Colors.white70,
-                                            )
-                                          : null,
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: _buildBookImage(imagePath),
+                                      ),
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
@@ -476,7 +541,7 @@ class _DiarioScreenState extends State<DiarioScreen> {
                                                             'Adicionar',
                                                             style: GoogleFonts
                                                                 .poppins(
-                                                              color: Color(
+                                                              color: const Color(
                                                                   0xFF9E26B3),
                                                               fontSize: 12,
                                                               fontWeight:
@@ -513,28 +578,24 @@ class _DiarioScreenState extends State<DiarioScreen> {
                                                       final donation = {
                                                         'image': book['image'],
                                                         'title':
-                                                            book['title'] ??
-                                                                '',
+                                                            book['title'] ?? '',
                                                         'author':
-                                                            book['author'] ??
-                                                                '',
-                                                        'genre':
-                                                            book['genre'] ??
-                                                                book['genero'] ??
-                                                                '',
+                                                            book['author'] ?? '',
+                                                        'genre': book['genre'] ??
+                                                            book['genero'] ??
+                                                            '',
                                                         'condition': 'Bom',
                                                         'notes': '',
                                                         'sourceDiaryId': docId,
-                                                        'createdAt': FieldValue
-                                                            .serverTimestamp(),
+                                                        'createdAt':
+                                                            FieldValue.serverTimestamp(),
                                                       };
 
                                                       await FirebaseFirestore
                                                           .instance
                                                           .collection('users')
                                                           .doc(currentUser.uid)
-                                                          .collection(
-                                                              'donations')
+                                                          .collection('donations')
                                                           .add(donation);
 
                                                       if (!mounted) return;

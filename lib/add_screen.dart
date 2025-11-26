@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
 import 'home_screen.dart';
+import 'services/cloudinary_service.dart';
 
 class AddScreen extends StatefulWidget {
   final Map<String, dynamic>? bookToEdit;
@@ -56,17 +58,57 @@ class _AddScreenState extends State<AddScreen> {
   XFile? pickedImage;
   final ImagePicker picker = ImagePicker();
   int rating = 0;
+  bool _isSaving = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Se estamos editando, popula os campos com os valores existentes
+    final edit = widget.bookToEdit;
+    if (edit != null) {
+      titleController.text = edit['title'] ?? '';
+      authorController.text = edit['author'] ?? '';
+      yearController.text = edit['year']?.toString() ?? '';
+      pagesController.text = edit['pages']?.toString() ?? '';
+      valueController.text = edit['value']?.toString() ?? '';
+      startDateController.text = edit['startDate'] ?? '';
+      endDateController.text = edit['endDate'] ?? '';
+      summaryController.text = edit['summary'] ?? '';
+      noteController.text = edit['note'] ?? '';
+      selectedGenre = edit['genre'] ?? edit['genero'];
+      rating = (edit['rating'] ?? 0) is int ? (edit['rating'] ?? 0) : int.tryParse('${edit['rating'] ?? 0}') ?? 0;
+
+      // Se o edit contém uma URL de imagem, mantemos isso (não há pickedImage)
+      // Caso prefira pré-baixar a imagem para permitir reupload, pode usar _setNetworkImage(edit['image'])
+    }
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    titleController.dispose();
+    authorController.dispose();
+    yearController.dispose();
+    pagesController.dispose();
+    valueController.dispose();
+    startDateController.dispose();
+    endDateController.dispose();
+    summaryController.dispose();
+    noteController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickImageFrom(ImageSource source) async {
     try {
-      final XFile? image = await picker.pickImage(source: source);
-      if (image != null) setState(() => pickedImage = image);
+      final XFile? image = await picker.pickImage(source: source, imageQuality: 85);
+      if (image != null) {
+        setState(() => pickedImage = image);
+      }
     } catch (e) {
       debugPrint('Erro ao selecionar imagem: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Não foi possível acessar a câmera/galeria')),
+          const SnackBar(content: Text('Não foi possível acessar a câmera/galeria')),
         );
       }
     }
@@ -121,21 +163,26 @@ class _AddScreenState extends State<AddScreen> {
   }
 
   Future<void> fetchBookSuggestions(String query) async {
-    final url = Uri.parse(
-      'https://www.googleapis.com/books/v1/volumes?q=intitle:$query&langRestrict=pt',
-    );
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data['items'] != null) {
-        setState(() {
-          bookSuggestions = (data['items'] as List)
-              .map<Map<String, dynamic>>(
-                (item) => Map<String, dynamic>.from(item['volumeInfo']),
-              )
-              .toList();
-        });
+    try {
+      final url = Uri.parse(
+        'https://www.googleapis.com/books/v1/volumes?q=intitle:$query&langRestrict=pt',
+      );
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['items'] != null) {
+          setState(() {
+            bookSuggestions = (data['items'] as List)
+                .map<Map<String, dynamic>>(
+                  (item) => Map<String, dynamic>.from(item['volumeInfo']),
+                )
+                .toList();
+          });
+        }
       }
+    } catch (e) {
+      debugPrint('Erro fetchBookSuggestions: $e');
+      // não falhar a UI aqui
     }
   }
 
@@ -153,59 +200,125 @@ class _AddScreenState extends State<AddScreen> {
           : '';
       summaryController.text = book['description'] ?? '';
       if (book['imageLinks'] != null &&
-          book['imageLinks']['thumbnail'] != null) {
-        _setNetworkImage(book['imageLinks']['thumbnail']);
+          (book['imageLinks']['thumbnail'] ?? book['imageLinks']['smallThumbnail']) != null) {
+        _setNetworkImage((book['imageLinks']['thumbnail'] ?? book['imageLinks']['smallThumbnail']).toString());
       }
       bookSuggestions = [];
+      searchQuery = '';
+      searchController.clear();
     });
   }
 
-  void _setNetworkImage(String url) async {
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final bytes = response.bodyBytes;
-      final tempDir = Directory.systemTemp;
-      final file = await File(
-        '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.png',
-      ).writeAsBytes(bytes);
-      setState(() => pickedImage = XFile(file.path));
+  Future<void> _setNetworkImage(String url) async {
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final bytes = response.bodyBytes;
+        final tempDir = Directory.systemTemp;
+        final file = await File(
+          '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.png',
+        ).writeAsBytes(bytes);
+        if (mounted) setState(() => pickedImage = XFile(file.path));
+      }
+    } catch (e) {
+      debugPrint('Erro ao baixar imagem da API: $e');
     }
   }
 
-  void _saveBook() {
-    final bookData = {
-      'image': pickedImage?.path,
-      'title': titleController.text,
-      'author': authorController.text,
-      'genre': selectedGenre ?? '',
-      'year': yearController.text,
-      'pages': pagesController.text,
-      'value': valueController.text,
-      'startDate': startDateController.text,
-      'endDate': endDateController.text,
-      'summary': summaryController.text,
-      'note': noteController.text,
-      'rating': rating,
-    };
+  // Gera um nome de arquivo seguro (retira espaços e caracteres não-ASCII básicos)
+  String _generateFileName(String title, String userId) {
+    final safeTitle = title.trim().toLowerCase()
+        // substitui espaços por underline
+        .replaceAll(RegExp(r'\s+'), '_')
+        // remove caracteres que não sejam ASCII alfanuméricos ou underline
+        .replaceAll(RegExp(r'[^\w\-]'), '');
+    final truncated = safeTitle.length > 50 ? safeTitle.substring(0, 50) : safeTitle;
+    return '${truncated}_$userId';
+  }
 
-    titleController.clear();
-    authorController.clear();
-    yearController.clear();
-    pagesController.clear();
-    valueController.clear();
-    startDateController.clear();
-    endDateController.clear();
-    summaryController.clear();
-    noteController.clear();
-    selectedGenre = null;
-    pickedImage = null;
-    rating = 0;
-    searchQuery = '';
-    bookSuggestions = [];
+  Future<void> _saveBook() async {
+    if (titleController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('O título do livro é obrigatório.')),
+      );
+      return;
+    }
 
-    setState(() {});
+    setState(() => _isSaving = true);
 
-    widget.onSaveBook(bookData);
+    try {
+      String? imageUrl;
+      final user = FirebaseAuth.instance.currentUser;
+      final userId = user?.uid ?? 'unknown_user';
+
+      // Se houver pickedImage (nova imagem local), faz upload para Cloudinary
+      if (pickedImage != null) {
+        final fileName = _generateFileName(titleController.text, userId);
+        imageUrl = await CloudinaryService.uploadImage(File(pickedImage!.path), publicId: fileName);
+      } else {
+        // se estamos editando e não escolheu nova imagem, preserva a imagem existente
+        if (widget.bookToEdit != null && widget.bookToEdit!['image'] != null) {
+          imageUrl = widget.bookToEdit!['image'].toString();
+        }
+      }
+
+      final bookData = {
+        'image': imageUrl,
+        'title': titleController.text,
+        'author': authorController.text,
+        'genre': selectedGenre ?? '',
+        'year': yearController.text,
+        'pages': pagesController.text,
+        'value': valueController.text,
+        'startDate': startDateController.text,
+        'endDate': endDateController.text,
+        'summary': summaryController.text,
+        'note': noteController.text,
+        'rating': rating,
+        // opcional: 'updatedAt': FieldValue.serverTimestamp()
+      };
+
+      // Limpeza UI antes de chamar onSaveBook para manter feedback responsivo
+      titleController.clear();
+      authorController.clear();
+      yearController.clear();
+      pagesController.clear();
+      valueController.clear();
+      startDateController.clear();
+      endDateController.clear();
+      summaryController.clear();
+      noteController.clear();
+      setState(() {
+        selectedGenre = null;
+        pickedImage = null;
+        rating = 0;
+        searchQuery = '';
+        bookSuggestions = [];
+      });
+
+      await widget.onSaveBook(bookData);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Livro salvo com sucesso!', style: GoogleFonts.poppins()),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro ao salvar livro: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao salvar livro. Tente novamente.', style: GoogleFonts.poppins()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   @override
@@ -258,6 +371,7 @@ class _AddScreenState extends State<AddScreen> {
                   color: const Color(0xFF27273A),
                   child: ListView.builder(
                     shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: bookSuggestions.length,
                     itemBuilder: (context, index) {
                       final book = bookSuggestions[index];
@@ -311,8 +425,6 @@ class _AddScreenState extends State<AddScreen> {
                           ),
                         ),
                         onTap: () {
-                          searchController.text = book['title'] ?? '';
-                          searchQuery = '';
                           fillBookFields(book);
                         },
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -340,8 +452,8 @@ class _AddScreenState extends State<AddScreen> {
                         child: Container(
                           width: double.infinity,
                           height: desiredHeight,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF27273A),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF27273A),
                           ),
                           child: pickedImage != null
                               ? Image.file(
@@ -389,7 +501,7 @@ class _AddScreenState extends State<AddScreen> {
               _buildTextField('Nome do Autor', Icons.person, authorController),
               const SizedBox(height: 15),
               DropdownButtonFormField<String>(
-                initialValue: selectedGenre,
+                value: selectedGenre,
                 dropdownColor: const Color(0xFF141425),
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.category, color: Colors.white),
@@ -422,6 +534,7 @@ class _AddScreenState extends State<AddScreen> {
                     .toList(),
                 onChanged: (val) => setState(() => selectedGenre = val),
               ),
+              const SizedBox(height: 15),
               Row(
                 children: [
                   Expanded(
@@ -477,20 +590,29 @@ class _AddScreenState extends State<AddScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _saveBook,
+                  onPressed: _isSaving ? null : _saveBook,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF27273A),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: Text(
-                    'Adicionar Livro',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 14,
-                    ),
-                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          'Adicionar Livro',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
                 ),
               ),
             ],
