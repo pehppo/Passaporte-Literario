@@ -62,7 +62,7 @@ class Book {
 Future<List<Book>> searchBooks(String query, {int maxResults = 40}) async {
   if (query.isEmpty) return [];
   final url = Uri.parse(
-      'https://www.googleapis.com/books/v1/volumes?q=$query&maxResults=$maxResults');
+      'https://www.googleapis.com/books/v1/volumes?q=$query&maxResults=$maxResults&langRestrict=pt&printType=books&orderBy=relevance');
   final response = await http.get(url);
   if (response.statusCode == 200) {
     final data = json.decode(response.body);
@@ -484,13 +484,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
 
     final Map<String, String> categories = {
-      'Melhores livros brasileiros': 'literatura brasileira',
-      'Religião': 'religiosos',
-      'História': 'história',
-      'Terror': 'terror',
-      'Ficção': 'ficção',
-      'Romance': 'romance',
-      'Fantasia': 'fantasia',
+      'Literatura Brasileira': 'subject:"Brazilian literature"',
+      'Ficção Científica': 'subject:"science fiction"',
+      'Fantasia': 'subject:fantasy',
+      'Romance': 'subject:romance',
+      'Suspense e Terror': 'subject:horror',
+      'Autoajuda': 'subject:"self-help"',
+      'Negócios e Economia': 'subject:business',
+      'História': 'subject:history',
+      'Religião e Espiritualidade': 'subject:religion',
     };
 
     return Scaffold(
