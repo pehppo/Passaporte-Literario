@@ -1,4 +1,4 @@
-package com.example.pass_liter
+package com.pass_liter
 
 import io.flutter.embedding.android.FlutterActivity
 

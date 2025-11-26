@@ -7,16 +7,12 @@ import 'package:flutter/services.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
-ValueNotifier<String> temaNotifier = ValueNotifier('Sistema');
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (Platform.isAndroid) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.android,
-    );
-  }
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   SystemChrome.setEnabledSystemUIMode(
     SystemUiMode.immersiveSticky,
@@ -38,54 +34,66 @@ Future<void> main() async {
 class PassaporteApp extends StatelessWidget {
   const PassaporteApp({super.key});
 
-  ThemeMode _themeMode(String tema) {
-    switch (tema) {
-      case 'Claro':
-        return ThemeMode.light;
-      case 'Escuro':
-        return ThemeMode.dark;
-      default:
-        return ThemeMode.system;
-    }
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Passaporte Literário',
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF141425),
+        primaryColor: const Color(0xFF141425),
+        useMaterial3: true,
+      ),
+      home: const SplashWrapper(),
+    );
+  }
+}
+
+class SplashWrapper extends StatefulWidget {
+  const SplashWrapper({super.key});
+
+  @override
+  State<SplashWrapper> createState() => _SplashWrapperState();
+}
+
+class _SplashWrapperState extends State<SplashWrapper> {
+  bool _showSplash = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 2000)).then((_) {
+      if (mounted) {
+        setState(() => _showSplash = false);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<String>(
-      valueListenable: temaNotifier,
-      builder: (context, temaAtual, child) {
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            brightness: Brightness.light,
-            primaryColor: const Color(0xFF0066FF),
-            scaffoldBackgroundColor: const Color(0xFFF0F0F0),
-          ),
-          darkTheme: ThemeData(
-            brightness: Brightness.dark,
-            primaryColor: const Color(0xFF0066FF),
-            scaffoldBackgroundColor: const Color(0xFF141425),
-          ),
-          themeMode: _themeMode(temaAtual),
-          home: Platform.isAndroid
-              ? StreamBuilder<User?>(
-                  stream: FirebaseAuth.instance.authStateChanges(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const SplashScreen();
-                    }
+    if (_showSplash) {
+      return const SplashScreen();
+    }
 
-                    if (snapshot.hasData) {
-                      return const HomeScreen();
-                    }
-
-                    return const LoginScreen();
-                  },
-                )
-              : const LoginScreen(),
-        );
-      },
-    );
+    if (Platform.isAndroid || Platform.isIOS) {
+      return StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasData) {
+            return const HomeScreen();
+          }
+          return const LoginScreen();
+        },
+      );
+    } else {
+      return const LoginScreen();
+    }
   }
 }
 

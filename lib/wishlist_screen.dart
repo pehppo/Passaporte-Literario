@@ -5,8 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'services/cloudinary_service.dart';
-
+import 'services/cloudinary_service.dart'; 
 import 'home_screen.dart';
 
 class WishlistScreen extends StatefulWidget {
@@ -24,6 +23,26 @@ class _WishlistScreenState extends State<WishlistScreen> {
   final TextEditingController _addGenreController = TextEditingController();
   final TextEditingController _addPriceController = TextEditingController();
   String _addPriority = 'Média';
+
+  Stream<QuerySnapshot>? _wishlistStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupStream();
+  }
+
+  void _setupStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _wishlistStream = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('wishlist')
+          .orderBy('createdAt', descending: false)
+          .snapshots();
+    }
+  }
 
   @override
   void dispose() {
@@ -68,7 +87,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       if (pv == null) continue;
       try {
         final raw = pv is String ? pv : pv.toString();
-        final normalized = raw.toString().replaceAll(',', '.');
+        final normalized = raw.replaceAll(',', '.');
         final d = pv is num ? pv.toDouble() : double.parse(normalized);
         total += d;
       } catch (_) {}
@@ -97,25 +116,27 @@ class _WishlistScreenState extends State<WishlistScreen> {
         final file = File(picked.path);
         try {
           final url = await CloudinaryService.uploadImage(file);
+          
           await FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
               .collection('wishlist')
               .doc(docId)
               .update({'image': url});
+              
         } catch (e) {
-          debugPrint('Cloudinary upload failed for wishlist item: $e');
+          debugPrint('Cloudinary upload failed: $e');
           rethrow;
         }
       }
-    } catch (e, s) {
-      debugPrint('Erro ao salvar imagem da wishlist: $e');
-      debugPrint('$s');
+    } catch (e) {
+      debugPrint('Erro ao salvar imagem: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao salvar imagem: ${e.toString()}', style: GoogleFonts.poppins()),
+          content: Text('Erro ao salvar imagem.', style: GoogleFonts.poppins()),
+          backgroundColor: Colors.red,
         ),
       );
     } finally {
@@ -123,181 +144,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
     }
   }
 
-  Future<void> _addOrEditItem({
-    Map<String, dynamic>? item,
-    String? docId,
-  }) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final titleController = TextEditingController(text: item?['title'] ?? '');
-    final authorController = TextEditingController(text: item?['author'] ?? '');
-    final genreController = TextEditingController(text: item?['genre'] ?? '');
-    final priceController = TextEditingController(
-      text: item?['price']?.toString() ?? '',
-    );
-    String priority = item?['priority'] ?? 'Média';
-
+  Future<void> _showEditDialog(Map<String, dynamic> item, String docId) async {
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF27273A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Text(
-          'Editar item',
-          style: GoogleFonts.poppins(color: Colors.white),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            children: [
-              TextField(
-                controller: titleController,
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w400,
-                  fontSize: 13,
-                  color: Colors.white,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Título',
-                  labelStyle: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w400,
-                    fontSize: 13,
-                    color: Colors.white70,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: authorController,
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w400,
-                  fontSize: 13,
-                  color: Colors.white,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Autor',
-                  labelStyle: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w400,
-                    fontSize: 13,
-                    color: Colors.white70,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: genreController,
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w400,
-                  fontSize: 13,
-                  color: Colors.white,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Gênero',
-                  labelStyle: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w400,
-                    fontSize: 13,
-                    color: Colors.white70,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: priceController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9\.,]'))
-                ],
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w400,
-                  fontSize: 13,
-                  color: Colors.white,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Preço estimado',
-                  labelStyle: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w400,
-                    fontSize: 13,
-                    color: Colors.white70,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: priority,
-                dropdownColor: const Color(0xFF27273A),
-                decoration: InputDecoration(
-                  labelText: 'Prioridade',
-                  labelStyle: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w400,
-                    fontSize: 13,
-                    color: Colors.white70,
-                  ),
-                ),
-                items: ['Alta', 'Média', 'Baixa']
-                    .map(
-                      (p) => DropdownMenuItem(
-                        value: p,
-                        child: Text(
-                          p,
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) => priority = v ?? 'Média',
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancelar',
-              style: GoogleFonts.poppins(color: Colors.white70),
-            ),
-          ),
-          TextButton(
-            onPressed: () async {
-              final newItem = {
-                'title': titleController.text.trim(),
-                'author': authorController.text.trim(),
-                'genre': genreController.text.trim(),
-                'price': (() {
-                  final raw = priceController.text.trim();
-                  if (raw.isEmpty) return null;
-                  final normalized = raw.replaceAll(',', '.');
-                  return double.tryParse(normalized);
-                })(),
-                'priority': priority,
-                'image': item?['image'],
-                'note': item?['note'] ?? '',
-              };
-
-              try {
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(user.uid)
-                    .collection('wishlist')
-                    .doc(docId)
-                    .update(newItem);
-              } catch (e) {
-                debugPrint('Erro ao salvar item da wishlist: $e');
-              }
-
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: Text(
-              'Salvar',
-              style: GoogleFonts.poppins(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+      builder: (context) => EditWishlistItemDialog(item: item, docId: docId),
     );
   }
 
@@ -358,7 +208,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
             .doc(docId)
             .delete();
       } catch (e) {
-        debugPrint('Erro ao excluir item da wishlist: $e');
+        debugPrint('Erro ao excluir item: $e');
       }
     }
   }
@@ -384,12 +234,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
       );
     }
 
-    final wishlistStream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('wishlist')
-        .orderBy('createdAt', descending: false)
-        .snapshots();
+    if (_wishlistStream == null) {
+      _setupStream();
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF141425),
@@ -401,7 +248,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: StreamBuilder<QuerySnapshot>(
-            stream: wishlistStream,
+            stream: _wishlistStream,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return SizedBox(
@@ -461,138 +308,58 @@ class _WishlistScreenState extends State<WishlistScreen> {
                         ),
                         const SizedBox(height: 10),
                         DropdownButtonFormField<String>(
-                          initialValue: _addGenreController.text.isNotEmpty
+                          value: _addGenreController.text.isNotEmpty
                               ? _addGenreController.text
                               : null,
                           dropdownColor: const Color(0xFF141425),
                           decoration: InputDecoration(
-                            prefixIcon: const Icon(
-                              Icons.category,
-                              color: Colors.white,
-                            ),
+                            prefixIcon: const Icon(Icons.category, color: Colors.white),
                             labelText: 'Gênero',
-                            labelStyle: GoogleFonts.poppins(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
-                            border: const UnderlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xFF232533)),
-                            ),
-                            enabledBorder: const UnderlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xFF232533)),
-                            ),
-                            focusedBorder: const UnderlineInputBorder(
-                              borderSide: BorderSide(color: Colors.white),
-                            ),
+                            labelStyle: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
+                            border: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF232533))),
+                            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF232533))),
+                            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
                           ),
                           style: GoogleFonts.poppins(color: Colors.white),
+                          hint: Text('Selecione', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 13)),
                           items: <String>[
-                            'Ação',
-                            'Autoajuda',
-                            'Aventura',
-                            'Biografia',
-                            'Ciência',
-                            'Clássico',
-                            'Comédia',
-                            'Drama',
-                            'Fantasia',
-                            'Ficção Científica',
-                            'História',
-                            'Infantil',
-                            'Mistério',
-                            'Policial',
-                            'Religião',
-                            'Romance',
-                            'Terror',
-                            'Outro'
-                          ]
-                              .map(
-                                (g) => DropdownMenuItem(
-                                  value: g,
-                                  child: Text(
-                                    g,
-                                    style: GoogleFonts.poppins(
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (val) =>
-                              setState(() => _addGenreController.text = val ?? ''),
+                            'Ação', 'Autoajuda', 'Aventura', 'Biografia', 'Ciência', 'Clássico',
+                            'Comédia', 'Drama', 'Fantasia', 'Ficção Científica', 'História',
+                            'Infantil', 'Mistério', 'Policial', 'Religião', 'Romance', 'Terror', 'Outro'
+                          ].map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
+                          onChanged: (val) => setState(() => _addGenreController.text = val ?? ''),
                         ),
                         const SizedBox(height: 10),
                         TextField(
                           controller: _addPriceController,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9\.,]'),
-                            )
-                          ],
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w400,
-                            fontSize: 13,
-                            color: Colors.white,
-                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9\.,]'))],
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.w400, fontSize: 13, color: Colors.white),
                           decoration: InputDecoration(
-                            prefixIcon: const Icon(
-                              Icons.attach_money,
-                              color: Colors.white,
-                            ),
+                            prefixIcon: const Icon(Icons.attach_money, color: Colors.white),
                             labelText: 'Preço Estimado',
-                            labelStyle: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w400,
-                              fontSize: 13,
-                              color: Colors.white70,
-                            ),
+                            labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w400, fontSize: 13, color: Colors.white70),
                           ),
                         ),
                         const SizedBox(height: 10),
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: DropdownButtonFormField<String>(
-                            initialValue: _addPriority,
+                            value: _addPriority,
                             dropdownColor: const Color(0xFF141425),
                             decoration: InputDecoration(
-                              prefixIcon: const Icon(
-                                Icons.priority_high,
-                                color: Colors.white,
-                              ),
+                              prefixIcon: const Icon(Icons.priority_high, color: Colors.white),
                               labelText: 'Prioridade',
-                              labelStyle: GoogleFonts.poppins(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                              border: const UnderlineInputBorder(
-                                borderSide:
-                                    BorderSide(color: Color(0xFF232533)),
-                              ),
-                              enabledBorder: const UnderlineInputBorder(
-                                borderSide:
-                                    BorderSide(color: Color(0xFF232533)),
-                              ),
-                              focusedBorder: const UnderlineInputBorder(
-                                borderSide: BorderSide(color: Colors.white),
-                              ),
+                              labelStyle: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                              border: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF232533))),
+                              enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF232533))),
+                              focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
                             ),
                             style: GoogleFonts.poppins(color: Colors.white),
                             items: ['Alta', 'Média', 'Baixa']
-                                .map(
-                                  (p) => DropdownMenuItem(
-                                    value: p,
-                                    child: Text(
-                                      p,
-                                      style: GoogleFonts.poppins(
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                )
+                                .map((p) => DropdownMenuItem(value: p, child: Text(p)))
                                 .toList(),
-                            onChanged: (v) =>
-                                setState(() => _addPriority = v ?? 'Média'),
+                            onChanged: (v) => setState(() => _addPriority = v ?? 'Média'),
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -601,22 +368,17 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           height: 50,
                           child: ElevatedButton(
                             onPressed: () async {
-                              final title =
-                                  _addTitleController.text.trim();
+                              final title = _addTitleController.text.trim();
                               if (title.isEmpty) return;
 
                               final newItem = {
                                 'title': title,
-                                'author':
-                                    _addAuthorController.text.trim(),
-                                'genre':
-                                    _addGenreController.text.trim(),
+                                'author': _addAuthorController.text.trim(),
+                                'genre': _addGenreController.text.trim(),
                                 'price': (() {
-                                  final raw =
-                                      _addPriceController.text.trim();
+                                  final raw = _addPriceController.text.trim();
                                   if (raw.isEmpty) return null;
-                                  final normalized =
-                                      raw.replaceAll(',', '.');
+                                  final normalized = raw.replaceAll(',', '.');
                                   return double.tryParse(normalized);
                                 })(),
                                 'priority': _addPriority,
@@ -632,8 +394,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                     .collection('wishlist')
                                     .add(newItem);
                               } catch (e) {
-                                debugPrint(
-                                    'Erro ao adicionar item na wishlist: $e');
+                                debugPrint('Erro ao adicionar item na wishlist: $e');
                               }
 
                               _addTitleController.clear();
@@ -644,17 +405,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                             child: Text(
                               'Adicionar à Lista',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                color: const Color(0xFF141425),
-                              ),
+                              style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 13, color: const Color(0xFF141425)),
                             ),
                           ),
                         ),
@@ -662,65 +417,38 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                      horizontal: 16,
-                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                     margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF27273A),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    decoration: BoxDecoration(color: const Color(0xFF27273A), borderRadius: BorderRadius.circular(10)),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Total estimado',
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 13,
-                          ),
-                        ),
-                        Text(
-                          'R\$ ${_formatCurrencyDouble(totalEst)}',
-                          style: GoogleFonts.poppins(
-                            color: const Color(0xFF4CB050),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
+                        Text('Total estimado', style: GoogleFonts.poppins(color: Colors.white, fontSize: 13)),
+                        Text('R\$ ${_formatCurrencyDouble(totalEst)}', style: GoogleFonts.poppins(color: const Color(0xFF4CB050), fontWeight: FontWeight.w600, fontSize: 13)),
                       ],
                     ),
                   ),
+
                   wishlist.isEmpty
                       ? Padding(
                           padding: const EdgeInsets.only(top: 50.0),
-                          child: Center(
-                            child: Text(
-                              'Nenhum item na lista de desejos',
-                              style:
-                                  GoogleFonts.poppins(color: Colors.white70),
-                            ),
-                          ),
+                          child: Center(child: Text('Nenhum item na lista de desejos', style: GoogleFonts.poppins(color: Colors.white70))),
                         )
                       : ListView.separated(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: wishlist.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 15),
+                          separatorBuilder: (_, __) => const SizedBox(height: 15),
                           itemBuilder: (context, index) {
                             final w = wishlist[index];
                             final docId = w['id'] as String;
 
                             return Container(
                               padding: const EdgeInsets.all(15),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF27273A),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
+                              decoration: BoxDecoration(color: const Color(0xFF27273A), borderRadius: BorderRadius.circular(10)),
                               child: Row(
                                 children: [
                                   GestureDetector(
@@ -729,8 +457,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                       width: 64,
                                       height: 88,
                                       decoration: BoxDecoration(
-                                        borderRadius:
-                                            BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(8),
                                         color: Colors.grey[800],
                                         image: w['image'] != null
                                             ? DecorationImage(
@@ -741,72 +468,34 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                               )
                                             : null,
                                       ),
-                                      child: w['image'] == null
-                                          ? const Icon(
-                                              Icons.add,
-                                              color: Colors.white,
-                                            )
-                                          : null,
+                                      child: w['image'] == null ? const Icon(Icons.add, color: Colors.white) : null,
                                     ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          w['title'] ?? '',
-                                          style: GoogleFonts.poppins(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                          ),
-                                        ),
+                                        Text(w['title'] ?? '', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
                                         const SizedBox(height: 4),
-                                        Text(
-                                          w['author'] ?? '',
-                                          style: GoogleFonts.poppins(
-                                            color: Colors.white70,
-                                            fontSize: 11,
-                                          ),
-                                        ),
+                                        Text(w['author'] ?? '', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11)),
+                                        const SizedBox(height: 6),
+                                        Text('${w['genre'] ?? '-'} • Prioridade: ${w['priority'] ?? '-'}', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11)),
                                         const SizedBox(height: 6),
                                         Text(
-                                          '${w['genre'] ?? '-'} • Prioridade: ${w['priority'] ?? '-'}',
-                                          style: GoogleFonts.poppins(
-                                            color: Colors.white70,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          'Preço: R\$' +
-                                              (() {
-                                                final pv = w['price'];
-                                                if (pv == null) return '-';
-                                                try {
-                                                  final raw = pv is String
-                                                      ? pv
-                                                      : pv.toString();
-                                                  final normalized = raw
-                                                      .replaceAll(',', '.');
-                                                  final d = pv is num
-                                                      ? pv.toDouble()
-                                                      : double.parse(
-                                                          normalized);
-                                                  return _formatCurrencyDouble(
-                                                      d);
-                                                } catch (e) {
-                                                  final s = pv.toString();
-                                                  return s.isEmpty ? '-' : s;
-                                                }
-                                              })(),
-                                          style: GoogleFonts.poppins(
-                                            color: const Color(0xFF4CB050),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w400,
-                                          ),
+                                          'Preço: R\$${(() {
+                                            final pv = w['price'];
+                                            if (pv == null) return '-';
+                                            try {
+                                              final raw = pv is String ? pv : pv.toString();
+                                              final normalized = raw.replaceAll(',', '.');
+                                              final d = pv is num ? pv.toDouble() : double.parse(normalized);
+                                              return _formatCurrencyDouble(d);
+                                            } catch (e) {
+                                              return '-';
+                                            }
+                                          })()}',
+                                          style: GoogleFonts.poppins(color: const Color(0xFF4CB050), fontSize: 12, fontWeight: FontWeight.w400),
                                         ),
                                       ],
                                     ),
@@ -815,22 +504,13 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                     children: [
                                       IconButton(
                                         iconSize: 20,
-                                        onPressed: () => _addOrEditItem(
-                                          item: w,
-                                          docId: docId,
-                                        ),
-                                        icon: const Icon(
-                                          Icons.edit,
-                                          color: Color(0xFF12B7FF),
-                                        ),
+                                        onPressed: () => _showEditDialog(w, docId),
+                                        icon: const Icon(Icons.edit, color: Color(0xFF12B7FF)),
                                       ),
                                       IconButton(
                                         iconSize: 20,
                                         onPressed: () => _deleteItem(docId),
-                                        icon: const Icon(
-                                          Icons.delete,
-                                          color: Colors.red,
-                                        ),
+                                        icon: const Icon(Icons.delete, color: Colors.red),
                                       ),
                                     ],
                                   ),
@@ -845,6 +525,156 @@ class _WishlistScreenState extends State<WishlistScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class EditWishlistItemDialog extends StatefulWidget {
+  final Map<String, dynamic> item;
+  final String docId;
+
+  const EditWishlistItemDialog({
+    super.key,
+    required this.item,
+    required this.docId,
+  });
+
+  @override
+  State<EditWishlistItemDialog> createState() => _EditWishlistItemDialogState();
+}
+
+class _EditWishlistItemDialogState extends State<EditWishlistItemDialog> {
+  late TextEditingController titleController;
+  late TextEditingController authorController;
+  late TextEditingController genreController;
+  late TextEditingController priceController;
+  late String priority;
+
+  @override
+  void initState() {
+    super.initState();
+    titleController = TextEditingController(text: widget.item['title'] ?? '');
+    authorController = TextEditingController(text: widget.item['author'] ?? '');
+    genreController = TextEditingController(text: widget.item['genre'] ?? '');
+    priceController = TextEditingController(text: widget.item['price']?.toString() ?? '');
+    priority = widget.item['priority'] ?? 'Média';
+  }
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    authorController.dispose();
+    genreController.dispose();
+    priceController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF27273A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Text('Editar item', style: GoogleFonts.poppins(color: Colors.white)),
+      content: SingleChildScrollView(
+        child: Column(
+          children: [
+            TextField(
+              controller: titleController,
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                labelText: 'Título',
+                labelStyle: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: authorController,
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                labelText: 'Autor',
+                labelStyle: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: genreController,
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                labelText: 'Gênero',
+                labelStyle: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: priceController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9\.,]'))],
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                labelText: 'Preço estimado',
+                labelStyle: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: priority,
+              dropdownColor: const Color(0xFF27273A),
+              decoration: InputDecoration(
+                labelText: 'Prioridade',
+                labelStyle: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
+              ),
+              items: ['Alta', 'Média', 'Baixa']
+                  .map((p) => DropdownMenuItem(
+                        value: p,
+                        child: Text(p, style: GoogleFonts.poppins(color: Colors.white)),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => priority = v ?? 'Média'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Cancelar', style: GoogleFonts.poppins(color: Colors.white70)),
+        ),
+        TextButton(
+          onPressed: () async {
+            final user = FirebaseAuth.instance.currentUser;
+            if (user == null) return;
+
+            final newItem = {
+              'title': titleController.text.trim(),
+              'author': authorController.text.trim(),
+              'genre': genreController.text.trim(),
+              'price': (() {
+                final raw = priceController.text.trim();
+                if (raw.isEmpty) return null;
+                final normalized = raw.replaceAll(',', '.');
+                return double.tryParse(normalized);
+              })(),
+              'priority': priority,
+              'image': widget.item['image'],
+              'note': widget.item['note'] ?? '',
+            };
+
+            try {
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .collection('wishlist')
+                  .doc(widget.docId)
+                  .update(newItem);
+            } catch (e) {
+              debugPrint('Erro ao salvar: $e');
+            }
+
+            if (context.mounted) Navigator.pop(context);
+          },
+          child: Text('Salvar', style: GoogleFonts.poppins(color: Colors.white)),
+        ),
+      ],
     );
   }
 }

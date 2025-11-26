@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -42,10 +44,94 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
+  // --- Recuperação de Senha ---
+  Future<void> _esqueciMinhaSenha() async {
+    final email = emailController.text.trim();
+    
+    if (email.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Digite seu e-mail no campo acima para redefinir.', style: GoogleFonts.poppins()),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Link de redefinição enviado para o seu e-mail (verifique o spam).',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String erro = 'Erro ao enviar e-mail.';
+      if (e.code == 'user-not-found') {
+        erro = 'Não existe uma conta vinculada a esse e-mail.';
+      } else if (e.code == 'invalid-email') {
+        erro = 'E-mail inválido.';
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(erro, style: GoogleFonts.poppins()), 
+            backgroundColor: Colors.redAccent
+          ),
+        );
+      }
+    }
+  }
+
+  // --- Verificação de Login Rigorosa ---
   Future<bool> verificarLogin(String email, String senha) async {
     try {
-      await FirebaseAuth.instance
+      UserCredential userCredential = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: senha);
+      
+      User? user = userCredential.user;
+
+      // Se o usuário existe mas não verificou o e-mail
+      if (user != null && !user.emailVerified) {
+        await FirebaseAuth.instance.signOut(); // Desloga imediatamente
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'E-mail não verificado. Verifique sua caixa de entrada.', 
+                style: GoogleFonts.poppins()
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Reenviar',
+                textColor: Colors.white,
+                onPressed: () async {
+                  // Reenviar e-mail (requer login temporário)
+                  try {
+                     await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: senha);
+                     await FirebaseAuth.instance.currentUser?.sendEmailVerification();
+                     await FirebaseAuth.instance.signOut();
+                     debugPrint('E-mail de verificação reenviado.');
+                  } catch (_) {}
+                },
+              ),
+            ),
+          );
+        }
+        return false; // Retorna falso para impedir a navegação
+      }
+
       return true;
     } on FirebaseAuthException catch (e) {
       debugPrint('Erro FirebaseAuth: ${e.code}');
@@ -62,36 +148,19 @@ class _LoginScreenState extends State<LoginScreen>
       if (gUser == null) return;
 
       final GoogleSignInAuthentication gAuth = await gUser.authentication;
-
       final credential = GoogleAuthProvider.credential(
         accessToken: gAuth.accessToken,
         idToken: gAuth.idToken,
       );
 
       await FirebaseAuth.instance.signInWithCredential(credential);
+      // Login com Google geralmente já é verificado
 
     } on FirebaseAuthException catch (e) {
-      debugPrint('Erro GoogleSignIn/FirebaseAuth: ${e.code}');
+      debugPrint('Erro GoogleSignIn: ${e.code}');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Não foi possível entrar com o Google.',
-              style: GoogleFonts.poppins(),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Erro genérico GoogleSignIn: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Ocorreu um erro ao entrar com o Google.',
-              style: GoogleFonts.poppins(),
-            ),
-          ),
+          SnackBar(content: Text('Erro ao entrar com Google.', style: GoogleFonts.poppins())),
         );
       }
     }
@@ -119,10 +188,7 @@ class _LoginScreenState extends State<LoginScreen>
         final endOffset = Offset.zero;
         final tween = Tween(begin: beginOffset, end: endOffset)
             .chain(CurveTween(curve: Curves.easeInOut));
-        return SlideTransition(
-          position: animation.drive(tween),
-          child: child,
-        );
+        return SlideTransition(position: animation.drive(tween), child: child);
       },
     );
   }
@@ -154,10 +220,7 @@ class _LoginScreenState extends State<LoginScreen>
                   child: SizedBox(
                     width: logoSize,
                     height: logoSize,
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      fit: BoxFit.contain,
-                    ),
+                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                   ),
                 ),
                 SizedBox(height: screenHeight * 0.03),
@@ -187,10 +250,7 @@ class _LoginScreenState extends State<LoginScreen>
                   animation: _shakeController,
                   builder: (context, child) {
                     double offset = _erroLogin ? _shakeAnimation.value : 0;
-                    return Transform.translate(
-                      offset: Offset(offset, 0),
-                      child: child,
-                    );
+                    return Transform.translate(offset: Offset(offset, 0), child: child);
                   },
                   child: Container(
                     height: campoHeight,
@@ -235,16 +295,12 @@ class _LoginScreenState extends State<LoginScreen>
                     color: const Color(0xFFA2A2A7),
                   ),
                 ),
-                const SizedBox(height: 0),
-
+                
                 AnimatedBuilder(
                   animation: _shakeController,
                   builder: (context, child) {
                     double offset = _erroLogin ? _shakeAnimation.value : 0;
-                    return Transform.translate(
-                      offset: Offset(offset, 0),
-                      child: child,
-                    );
+                    return Transform.translate(offset: Offset(offset, 0), child: child);
                   },
                   child: Container(
                     height: campoHeight,
@@ -266,7 +322,23 @@ class _LoginScreenState extends State<LoginScreen>
                   ),
                 ),
 
-                SizedBox(height: screenHeight * 0.05),
+                // Botão "Esqueceu sua senha?"
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _esqueciMinhaSenha,
+                    child: Text(
+                      'Esqueceu sua senha?',
+                      style: GoogleFonts.poppins(
+                        fontSize: fonteTexto * 0.75,
+                        color: const Color(0xFFA2A2A7),
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ),
+                ),
+                
+                SizedBox(height: screenHeight * 0.02),
 
                 SizedBox(
                   width: double.infinity,
@@ -290,6 +362,7 @@ class _LoginScreenState extends State<LoginScreen>
                       bool sucesso = await verificarLogin(email, senha);
                       debugPrint('verificarLogin result: $sucesso');
                       if (!sucesso) {
+                        // Se falhar (senha errada ou email não verificado), aciona erro visual
                         await _triggerError();
                         return;
                       }
@@ -297,9 +370,7 @@ class _LoginScreenState extends State<LoginScreen>
                       if (!mounted) return;
 
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Login realizado com sucesso!', style: GoogleFonts.poppins()),
-                        ),
+                        SnackBar(content: Text('Login realizado com sucesso!', style: GoogleFonts.poppins())),
                       );
 
                       Navigator.pushReplacement(
@@ -335,8 +406,7 @@ class _LoginScreenState extends State<LoginScreen>
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.white),
                       shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(screenWidth * 0.02),
+                        borderRadius: BorderRadius.circular(screenWidth * 0.02),
                       ),
                     ),
                     icon: Image.asset(
@@ -358,7 +428,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                 if (_erroLogin)
                   Text(
-                    'E-mail ou senha incorretos',
+                    'Credenciais incorretas ou e-mail não validado.',
                     style: GoogleFonts.poppins(
                       fontSize: fonteTexto * 0.8,
                       fontWeight: FontWeight.w500,
@@ -439,9 +509,7 @@ class _PasswordFieldState extends State<PasswordField> {
             obscureText: _obscureText,
             style:
                 TextStyle(color: Colors.white, fontSize: widget.fontSize),
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-            ),
+            decoration: const InputDecoration(border: InputBorder.none),
           ),
         ),
         IconButton(

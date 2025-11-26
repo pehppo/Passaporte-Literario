@@ -1,4 +1,15 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+
+class EditProfileScreen extends StatefulWidget {
+  final Function(String?)? onProfileImageChanged;
+  final String? currentName; 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
@@ -11,13 +22,34 @@ import 'home_screen.dart';
 class EditProfileScreen extends StatefulWidget {
   final Function(String?)? onProfileImageChanged;
 
-  const EditProfileScreen({super.key, this.onProfileImageChanged});
+  const EditProfileScreen({
+    super.key, 
+    this.onProfileImageChanged,
+    this.currentName,
+  });
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
+  late TextEditingController _nameController;
+  late TextEditingController _emailController;
+  late TextEditingController _aboutController;
+  late TextEditingController _phoneController;
+  
+  late TextEditingController _dayController;
+  late TextEditingController _monthController;
+  late TextEditingController _yearController;
+
+  String? photoUrl;
+  File? localPhotoFile;
+  bool _isLoading = false;
+
+  final ImagePicker picker = ImagePicker();
+
+  static const String _cloudinaryCloudName = 'CLOUDINARY_CLOUD_NAME';
+  static const String _cloudinaryUploadPreset = 'CLOUDINARY_UPLOAD_PRESET';
   String username = '';
   String email = '';
   String sobreMim = '';
@@ -37,7 +69,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _nameController = TextEditingController(text: widget.currentName ?? '');
+    _emailController = TextEditingController();
+    _aboutController = TextEditingController();
+    _phoneController = TextEditingController();
+    _dayController = TextEditingController();
+    _monthController = TextEditingController();
+    _yearController = TextEditingController();
+
     loadUserData();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _aboutController.dispose();
+    _phoneController.dispose();
+    _dayController.dispose();
+    _monthController.dispose();
+    _yearController.dispose();
+    super.dispose();
   }
 
   Future<void> loadUserData() async {
@@ -53,6 +105,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final data = doc.data() ?? {};
 
       setState(() {
+        _nameController.text = data['nome'] ?? user.displayName ?? '';
+        _emailController.text = data['email'] ?? user.email ?? '';
+        _aboutController.text = data['about'] ?? '';
+        _phoneController.text = data['phone'] ?? '';
+        
+        _dayController.text = data['birthDay'] ?? '';
+        _monthController.text = data['birthMonth'] ?? '';
+        _yearController.text = data['birthYear'] ?? '';
+
         email = data['email'] ?? user.email ?? '';
         username = data['name'] ?? user.displayName ?? '';
         sobreMim = data['about'] ?? '';
@@ -83,6 +144,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          content: Text('Enviando foto de perfil...', style: GoogleFonts.poppins()),
           content: Text(
             'Enviando foto de perfil...',
             style: GoogleFonts.poppins(),
@@ -100,6 +162,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Cloudinary upload failed: ${response.statusCode}');
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final url = (data['secure_url'] ?? data['url']) as String?;
+      if (url == null) throw Exception('Cloudinary did not return a URL');
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({'photoUrl': url}, SetOptions(merge: true));
+
+      setState(() {
+        photoUrl = url;
+      });
+      
+      if (mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      widget.onProfileImageChanged?.call(photoUrl);
+
+    } catch (e) {
+      debugPrint('Erro upload: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao enviar foto.', style: GoogleFonts.poppins())),
+        );
+      }
         throw Exception('Cloudinary upload failed: ${response.statusCode} ${response.body}');
       }
 
@@ -157,14 +247,68 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       widget.onProfileImageChanged?.call(null);
     } catch (e) {
+      debugPrint('Erro ao remover foto: $e');
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    setState(() => _isLoading = true);
+    final user = FirebaseAuth.instance.currentUser;
+    
+    if (user == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    final newName = _nameController.text.trim();
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'nome': newName,
+        'email': _emailController.text.isNotEmpty ? _emailController.text : user.email,
+        'about': _aboutController.text,
+        'phone': _phoneController.text,
+        'birthDay': _dayController.text,
+        'birthMonth': _monthController.text,
+        'birthYear': _yearController.text,
+      }, SetOptions(merge: true));
+
+      if (newName.isNotEmpty) {
+        await user.updateDisplayName(newName);
+      }
+      
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Perfil atualizado com sucesso!', style: GoogleFonts.poppins()),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.pop(context, true);
+
+    } catch (e) {
+      debugPrint('Erro ao salvar perfil: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao salvar alterações.', style: GoogleFonts.poppins()),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
       debugPrint('Erro ao remover foto de perfil: $e');
     }
   }
 
   Widget buildTextField({
     required String label,
-    required String value,
-    Function(String)? onChanged,
+    required TextEditingController controller,
     TextInputType keyboardType = TextInputType.text,
   }) {
     final controller = TextEditingController(text: value);
@@ -215,9 +359,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               width: 60,
               child: buildTextField(
                 label: 'DD',
-                value: dia,
+                controller: _dayController,
                 keyboardType: TextInputType.number,
-                onChanged: (v) => dia = v,
               ),
             ),
             const SizedBox(width: 27),
@@ -225,9 +368,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               width: 110,
               child: buildTextField(
                 label: 'MM',
-                value: mes,
+                controller: _monthController,
                 keyboardType: TextInputType.number,
-                onChanged: (v) => mes = v,
               ),
             ),
             const SizedBox(width: 27),
@@ -235,9 +377,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               width: 70,
               child: buildTextField(
                 label: 'AAAA',
-                value: ano,
+                controller: _yearController,
                 keyboardType: TextInputType.number,
-                onChanged: (v) => ano = v,
               ),
             ),
           ],
@@ -289,7 +430,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF141425),
-      appBar: const CustomTopBar(title: 'Editar Perfil', showBackButton: true),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF141425),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Editar Perfil',
+          style: GoogleFonts.poppins(
+            color: Colors.white, 
+            fontWeight: FontWeight.w600
+          ),
+        ),
+        centerTitle: true,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         child: Column(
@@ -326,6 +482,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ),
             const SizedBox(height: 10),
+            
             if (localPhotoFile != null || (photoUrl != null && photoUrl!.isNotEmpty))
               GestureDetector(
                 onTap: removeProfileImage,
@@ -342,6 +499,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             buildTextField(
               label: 'Nome',
+              controller: _nameController,
+            ),
+            buildTextField(
+              label: 'Sobre mim',
+              controller: _aboutController,
+            ),
+            buildTextField(
+              label: 'E-mail',
+              controller: _emailController,
               value: username,
               onChanged: (v) => username = v,
             ),
@@ -358,6 +524,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             buildTextField(
               label: 'Celular',
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+            ),
+            
               value: celular,
               onChanged: (v) => celular = v,
               keyboardType: TextInputType.phone,
@@ -366,7 +536,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             SizedBox(
               width: double.infinity,
+              height: 56,
               child: ElevatedButton(
+                onPressed: _isLoading ? null : _saveProfile,
                 onPressed: _saveProfile,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
@@ -382,7 +554,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     fontSize: 15,
                     color: const Color(0xFF141425),
                   ),
+                  elevation: 0,
                 ),
+                child: _isLoading 
+                  ? const CircularProgressIndicator(color: Color(0xFF141425))
+                  : Text(
+                      'Salvar alterações',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: const Color(0xFF141425),
+                      ),
+                    ),
               ),
             ),
           ],

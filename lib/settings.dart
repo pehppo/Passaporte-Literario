@@ -3,8 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 import 'login_screen.dart';
-import 'main.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,11 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _selectedTheme = 'Escuro';
 
   final List<String> _languages = ['Português', 'English', 'Español'];
-  final List<String> _themes = [
-    'Escuro',
-    'Claro (em breve)',
-    'Padrão do Sistema',
-  ];
+  final List<String> _themes = ['Escuro', 'Claro', 'Padrão do Sistema'];
 
   @override
   void initState() {
@@ -50,8 +47,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _selectedLanguage = language ?? 'Português';
         _selectedTheme = theme ?? 'Escuro';
       });
-
-      temaNotifier.value = _selectedTheme;
     } catch (e) {
       debugPrint('Erro ao carregar configurações do Firestore: $e');
     }
@@ -78,9 +73,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveTheme(String theme) async {
     final user = FirebaseAuth.instance.currentUser;
-
-    temaNotifier.value = theme;
-
     if (user == null) return;
 
     try {
@@ -98,6 +90,192 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _changePassword() async {
+    final user = FirebaseAuth.instance.currentUser;
+    
+    if (user == null || user.email == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível identificar o e-mail da conta.',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: user.email!);
+      
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF27273A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Text(
+            'Alterar Senha',
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 18,
+            ),
+          ),
+          content: Text(
+            'Um link para redefinir sua senha foi enviado para:\n\n${user.email}\n\nVerifique sua caixa de entrada e a pasta de spam.',
+            style: GoogleFonts.poppins(
+              color: Colors.white70,
+              fontSize: 13,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'OK',
+                style: GoogleFonts.poppins(
+                  color: const Color(0xFF4CB050),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('Erro ao enviar e-mail de redefinição: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erro ao enviar e-mail. Tente novamente mais tarde.',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _openEmail({required String subject}) async {
+    String? encodeQueryParameters(Map<String, String> params) {
+      return params.entries
+          .map((e) =>
+              '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+    }
+
+    final Uri emailLaunchUri = Uri(
+      scheme: 'mailto',
+      path: 'passap.literario@gmail.com',
+      query: encodeQueryParameters(<String, String>{
+        'subject': subject,
+      }),
+    );
+
+    try {
+      if (await canLaunchUrl(emailLaunchUri)) {
+        await launchUrl(emailLaunchUri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(emailLaunchUri, mode: LaunchMode.externalApplication);
+      }
+    } on PlatformException catch (e) {
+      debugPrint('Erro de plataforma: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Erro interno: Reinicie o aplicativo.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro genérico ao abrir email: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Não foi possível abrir o aplicativo de e-mail.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showTermsOfUse() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF27273A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Text(
+          'Termos de Uso',
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Text(
+              '''
+Bem-vindo ao nosso aplicativo de Diário de Leitura!
+
+1. Aceitação dos Termos
+Ao baixar e usar este aplicativo, você concorda com estes Termos de Uso. Se não concordar, por favor, não utilize o aplicativo.
+
+2. Uso do Aplicativo
+Este aplicativo destina-se ao registro pessoal de leituras, metas e listas de desejos. Você é responsável por manter a confidencialidade de sua conta e senha.
+
+3. Conteúdo do Usuário
+Você mantém a propriedade de qualquer conteúdo (comentários, anotações, fotos) que enviar. No entanto, você nos concede uma licença para armazenar e exibir esse conteúdo apenas para o seu uso pessoal dentro da plataforma.
+
+4. Privacidade
+Respeitamos sua privacidade. Seus dados são armazenados de forma segura e não são compartilhados com terceiros sem seu consentimento, exceto conforme exigido por lei.
+
+5. Responsabilidades
+Não nos responsabilizamos por quaisquer perdas ou danos resultantes do uso deste aplicativo. O serviço é fornecido "como está".
+
+6. Alterações nos Termos
+Podemos atualizar estes termos periodicamente. O uso continuado do aplicativo após as alterações constitui aceitação dos novos termos.
+
+Contato: passap.literario@gmail.com
+              ''', 
+              style: GoogleFonts.poppins(
+                color: Colors.white70,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Fechar',
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDropdownSetting({
     required String title,
     required String currentValue,
@@ -113,6 +291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             isExpanded: true,
             dropdownColor: const Color(0xFF27273A),
             iconEnabledColor: const Color(0xFF7E848D),
+            style: GoogleFonts.poppins(color: Colors.white),
             selectedItemBuilder: (context) {
               return options.map((_) {
                 return Row(
@@ -303,7 +482,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               SizedBox(height: screenHeight * 0.02),
               _buildDropdownSetting(
-                title: 'Idioma',
+                title: 'Idioma (em breve)',
                 currentValue: _selectedLanguage,
                 options: _languages,
                 onChanged: (val) {
@@ -314,7 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               SizedBox(height: screenHeight * 0.01),
               _buildDropdownSetting(
-                title: 'Temas',
+                title: 'Temas (em breve)',
                 currentValue: _selectedTheme,
                 options: _themes,
                 onChanged: (val) {
@@ -328,6 +507,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'Fale Conosco',
                 fontSize14: fontSize14,
                 onTap: () {
+                  _openEmail(subject: 'Fale Conosco - Passaporte Literário');
                 },
               ),
               SizedBox(height: screenHeight * 0.04),
@@ -343,21 +523,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildSettingRow(
                 title: 'Alterar Senha',
                 fontSize14: fontSize14,
-                onTap: () {
-                },
+                onTap: _changePassword,
               ),
               SizedBox(height: screenHeight * 0.01),
               _buildSettingRow(
                 title: 'Termos de Uso',
                 fontSize14: fontSize14,
-                onTap: () {
-                },
+                onTap: _showTermsOfUse,
               ),
               SizedBox(height: screenHeight * 0.01),
               _buildSettingRow(
                 title: 'Reportar Erro',
                 fontSize14: fontSize14,
                 onTap: () {
+                  _openEmail(subject: 'Reportar Erro - Passaporte Literário');
                 },
               ),
             ],

@@ -2,11 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 
-
 class CloudinaryService {
 
-  static const String cloudName = 'dtottvkil';
-  static const String uploadPreset = 'pass-liter';
+  static const String cloudName = 'CLOUDINARY_CLOUD_NAME';
+  static const String uploadPreset = 'CLOUDINARY_UPLOAD_PRESET';
 
   static Future<String> uploadImage(File file) async {
     final uri = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/upload');
