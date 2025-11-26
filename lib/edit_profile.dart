@@ -38,7 +38,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final ImagePicker picker = ImagePicker();
 
   static const String _cloudinaryCloudName = 'CLOUDINARY_CLOUD_NAME';
-  static const String _cloudinaryUploadPreset = 'CLOUDINARY_PRESET';
+  static const String _cloudinaryUploadPreset = 'CLOUDINARY_UPLOAD_PRESET';
 
   @override
   void initState() {
